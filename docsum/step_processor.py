@@ -67,6 +67,8 @@ def prepare(
     max_tokens: int = 2000,
     overlap_tokens: int = 0,
     max_output_tokens: int = 8192,
+    no_max_output_tokens: bool = False,
+    stream: bool = False,
     tokenizer_model: str = "gpt-4",
 ) -> StepState:
     """Chunk the input text and initialize the state file.
@@ -94,6 +96,8 @@ def prepare(
         max_tokens=max_tokens,
         overlap_tokens=overlap_tokens,
         max_output_tokens=max_output_tokens,
+        no_max_output_tokens=no_max_output_tokens,
+        stream=stream,
         tokenizer_model=tokenizer_model,
     )
     save_state(state)
@@ -169,12 +173,19 @@ def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retri
         # Map-reduce, hierarchical, or first chunk of refine: simple summarization
         prompt = render_prompt(state.prompt_template, chunk_text_to_process)
 
+    # Determine max_tokens for the API call
+    api_max_tokens = None if state.no_max_output_tokens else state.max_output_tokens
+
     # Retry loop
     last_error = None
     attempts = max_retries + 1  # always at least 1 attempt
     for attempt in range(attempts):
         try:
-            result = client.complete(prompt, max_tokens=state.max_output_tokens)
+            result = client.complete(
+                prompt,
+                max_tokens=api_max_tokens,
+                stream=state.stream,
+            )
             break
         except Exception as e:
             last_error = e

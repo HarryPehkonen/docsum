@@ -45,6 +45,8 @@ class StepState:
     max_tokens: int = 2000
     overlap_tokens: int = 0
     max_output_tokens: int = 8192
+    no_max_output_tokens: bool = False  # if True, omit max_tokens from API call
+    stream: bool = False  # if True, use streaming mode for LLM calls
     tokenizer_model: str = "gpt-4"
     results: dict[int, str] = field(default_factory=dict)
     running_summary: Optional[str] = None
@@ -107,6 +109,8 @@ def save_state(state: StepState) -> None:
         "max_tokens": state.max_tokens,
         "overlap_tokens": state.overlap_tokens,
         "max_output_tokens": state.max_output_tokens,
+        "no_max_output_tokens": state.no_max_output_tokens,
+        "stream": state.stream,
         "tokenizer_model": state.tokenizer_model,
         "running_summary": state.running_summary,
         "final_result": state.final_result,
@@ -137,6 +141,8 @@ def load_state(path: str) -> StepState:
         max_tokens=data.get("max_tokens", 2000),
         overlap_tokens=data.get("overlap_tokens", 0),
         max_output_tokens=data.get("max_output_tokens", 8192),
+        no_max_output_tokens=data.get("no_max_output_tokens", False),
+        stream=data.get("stream", False),
         tokenizer_model=data.get("tokenizer_model", "gpt-4"),
         running_summary=data.get("running_summary"),
         final_result=data.get("final_result"),

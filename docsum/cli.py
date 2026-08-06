@@ -137,6 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Output control
     run_p.add_argument("--max-output-tokens", type=int, default=8192, help="max tokens for LLM response per call (default: 8192)")
+    run_p.add_argument("--no-max-output-tokens", action="store_true", help="omit max_tokens from API call (use model default — may increase timeout risk)")
+    run_p.add_argument("--stream", action="store_true", help="use streaming mode (keeps connection active, helps avoid 524 timeouts)")
     run_p.add_argument("--quiet", "-q", action="store_true", help="suppress progress bar (for piping/gateway use)")
 
     # Prompt
@@ -170,6 +172,8 @@ def build_parser() -> argparse.ArgumentParser:
     prep_p.add_argument("--max-tokens", type=int, default=2000, help="max tokens per chunk (default: 2000)")
     prep_p.add_argument("--overlap-tokens", type=int, default=0, help="token overlap between chunks (default: 0)")
     prep_p.add_argument("--max-output-tokens", type=int, default=8192, help="max tokens for LLM response per call (default: 8192)")
+    prep_p.add_argument("--no-max-output-tokens", action="store_true", help="omit max_tokens from API call (use model default)")
+    prep_p.add_argument("--stream", action="store_true", help="use streaming mode for LLM calls (helps avoid 524 timeouts)")
 
     prep_prompt_group = prep_p.add_mutually_exclusive_group()
     prep_prompt_group.add_argument(
@@ -255,18 +259,24 @@ def _cmd_run(args) -> int:
     client = LLMClient(base_url=args.base_url, model=args.model, api_key=args.api_key)
     progress = _make_progress_bar(args.quiet)
 
+    # Determine max_tokens for API calls
+    run_max_tokens = None if args.no_max_output_tokens else args.max_output_tokens
+    run_stream = args.stream
+
     if args.mode == "map-reduce":
         result = map_reduce(
             text=text, client=client, prompt_template=prompt_template,
             reduce_template=reduce_template, max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens, model=args.tokenizer_model,
-            max_output_tokens=args.max_output_tokens, progress=progress,
+            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            progress=progress,
         )
     elif args.mode == "refine":
         result = refine(
             text=text, client=client, prompt_template=prompt_template,
             max_tokens=args.max_tokens, overlap_tokens=args.overlap_tokens,
-            model=args.tokenizer_model, max_output_tokens=args.max_output_tokens,
+            model=args.tokenizer_model,
+            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
             progress=progress,
         )
     elif args.mode == "hierarchical":
@@ -274,7 +284,8 @@ def _cmd_run(args) -> int:
             text=text, client=client, prompt_template=prompt_template,
             reduce_template=reduce_template, max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens, model=args.tokenizer_model,
-            max_output_tokens=args.max_output_tokens, progress=progress,
+            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            progress=progress,
         )
     else:
         print(f"error: unknown mode: {args.mode}", file=sys.stderr)
@@ -323,6 +334,8 @@ def _cmd_prepare(args) -> int:
         max_tokens=args.max_tokens,
         overlap_tokens=args.overlap_tokens,
         max_output_tokens=args.max_output_tokens,
+        no_max_output_tokens=args.no_max_output_tokens,
+        stream=args.stream,
         tokenizer_model=args.tokenizer_model,
     )
 
