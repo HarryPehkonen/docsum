@@ -127,13 +127,26 @@ def refine(
     running_summary = client.complete(first_prompt, max_tokens=max_output_tokens)
 
     # Subsequent chunks: refine the running summary
-    refine_instruction = (
-        "Here is a current summary of a document, followed by the next section of that document. "
-        "Update the summary to incorporate the new information. Keep the summary concise and "
-        "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
-        "Current summary:\n{summary}\n\n"
-        "New text:\n{text}"
-    )
+    # Detect JSON output and reinforce the schema to prevent field loss
+    if '"json"' in prompt_template.lower() or "return only json" in prompt_template.lower() or "return only valid json" in prompt_template.lower():
+        refine_instruction = (
+            "Here is a current JSON analysis of a document, followed by the next section of that document. "
+            "Update the JSON to incorporate the new information. "
+            "You MUST preserve ALL existing fields — do not drop any field even if the new section doesn't mention it. "
+            "Merge new entries into existing arrays (characters, places, themes, key_events, entities, species, technology). "
+            "Deduplicate by name where applicable. Keep key_events sorted by order. "
+            "Return ONLY valid JSON — no prose, no markdown fences.\n\n"
+            "Current JSON:\n{summary}\n\n"
+            "New text:\n{text}"
+        )
+    else:
+        refine_instruction = (
+            "Here is a current summary of a document, followed by the next section of that document. "
+            "Update the summary to incorporate the new information. Keep the summary concise and "
+            "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
+            "Current summary:\n{summary}\n\n"
+            "New text:\n{text}"
+        )
 
     for i, chunk in enumerate(chunks[1:], start=2):
         progress("refine", i, total)

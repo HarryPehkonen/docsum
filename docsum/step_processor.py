@@ -14,7 +14,7 @@ from typing import Optional
 
 from docsum.chunker import chunk_text, count_tokens
 from docsum.llm_client import LLMClient
-from docsum.prompts import render_prompt, render_reduce_prompt
+from docsum.prompts import render_prompt, render_reduce_prompt, BUILTIN_PROMPTS
 from docsum.step_state import StepState, load_state, save_state
 from docsum.algorithms import _recursive_reduce
 
@@ -144,13 +144,26 @@ def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retri
 
     if state.mode == "refine" and next_idx > 0 and state.running_summary is not None:
         # Refine mode: pass running summary + new chunk
-        refine_instruction = (
-            "Here is a current summary of a document, followed by the next section of that document. "
-            "Update the summary to incorporate the new information. Keep the summary concise and "
-            "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
-            "Current summary:\n{summary}\n\n"
-            "New text:\n{text}"
-        )
+        # Detect JSON output and reinforce the schema to prevent field loss
+        if '"json"' in state.prompt_template.lower() or "return only json" in state.prompt_template.lower() or "return only valid json" in state.prompt_template.lower():
+            refine_instruction = (
+                "Here is a current JSON analysis of a document, followed by the next section of that document. "
+                "Update the JSON to incorporate the new information. "
+                "You MUST preserve ALL existing fields — do not drop any field even if the new section doesn't mention it. "
+                "Merge new entries into existing arrays (characters, places, themes, key_events, entities, species, technology). "
+                "Deduplicate by name where applicable. Keep key_events sorted by order. "
+                "Return ONLY valid JSON — no prose, no markdown fences.\n\n"
+                "Current JSON:\n{summary}\n\n"
+                "New text:\n{text}"
+            )
+        else:
+            refine_instruction = (
+                "Here is a current summary of a document, followed by the next section of that document. "
+                "Update the summary to incorporate the new information. Keep the summary concise and "
+                "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
+                "Current summary:\n{summary}\n\n"
+                "New text:\n{text}"
+            )
         prompt = refine_instruction.replace("{summary}", state.running_summary).replace("{text}", chunk_text_to_process)
     else:
         # Map-reduce, hierarchical, or first chunk of refine: simple summarization
@@ -220,6 +233,17 @@ def finalize(state_path: str, client: LLMClient) -> dict:
     if state.total_chunks == 1:
         # Single chunk: result is the chunk summary, no reduce needed
         final = _clean_output(state.get_results()[0])
+        state.final_result = final
+        save_state(state)
+        return {"result": final, "is_complete": True}
+
+    # Check if this is a JSON reduce — use programmatic merge (no LLM call)
+    from docsum.json_merge import merge_json_chunks
+    json_reduce_template = BUILTIN_PROMPTS.get("json_reduce", "")
+    if state.reduce_template == json_reduce_template and json_reduce_template:
+        # Programmatic merge: fast, free, deterministic, never times out
+        merged = merge_json_chunks(state.get_results())
+        final = _clean_output(merged)
         state.final_result = final
         save_state(state)
         return {"result": final, "is_complete": True}
