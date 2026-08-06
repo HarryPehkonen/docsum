@@ -13,6 +13,9 @@ Examples:
 
     # Custom prompt from file
     docsum --input report.txt --model nvidia/nemotron-3-super-120b-a12b --prompt-file my_prompt.txt
+
+    # Quiet mode (no progress bar, for piping/gateway use)
+    docsum --input book.txt --model z-ai/glm-5.2 --quiet
 """
 
 import argparse
@@ -21,6 +24,50 @@ import sys
 from docsum.algorithms import map_reduce, refine, hierarchical
 from docsum.llm_client import LLMClient
 from docsum.prompts import BUILTIN_PROMPTS, get_builtin_prompt
+
+
+def _make_progress_bar(quiet: bool):
+    """Create a progress callback. Returns a no-op if quiet is True.
+
+    Uses tqdm for a visual progress bar on stderr. The bar auto-detects
+    terminal width and cleans up after completion.
+    """
+    if quiet:
+        return None
+
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        # tqdm not installed — fall back to simple stderr messages
+        def simple_progress(phase: str, current: int, total: int) -> None:
+            if current == 1:
+                print(f"  {phase}: {current}/{total}", file=sys.stderr, flush=True)
+            elif current == total:
+                print(f"  {phase}: {current}/{total} done", file=sys.stderr, flush=True)
+        return simple_progress
+
+    # tqdm progress bar
+    bar_holder: dict = {}
+
+    def tqdm_progress(phase: str, current: int, total: int) -> None:
+        if current == 1:
+            # Start a new bar for this phase
+            if bar_holder.get("bar"):
+                bar_holder["bar"].close()
+            bar_holder["bar"] = tqdm(
+                total=total,
+                desc=f"  {phase}",
+                unit="chunk",
+                leave=True,
+                file=sys.stderr,
+            )
+        if bar_holder.get("bar"):
+            bar_holder["bar"].update(1)
+            if current == total:
+                bar_holder["bar"].close()
+                bar_holder["bar"] = None
+
+    return tqdm_progress
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,6 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-tokens", type=int, default=2000, help="max tokens per chunk (default: 2000)")
     parser.add_argument("--overlap-tokens", type=int, default=0, help="token overlap between chunks (default: 0)")
+
+    # Output control
+    parser.add_argument("--max-output-tokens", type=int, default=8192, help="max tokens for LLM response per call (default: 8192)")
+    parser.add_argument("--quiet", "-q", action="store_true", help="suppress progress bar (for piping/gateway use)")
 
     # Prompt
     prompt_group = parser.add_mutually_exclusive_group()
@@ -99,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
         api_key=args.api_key,
     )
 
+    # Create progress callback
+    progress = _make_progress_bar(args.quiet)
+
     # Run the selected algorithm
     if args.mode == "map-reduce":
         result = map_reduce(
@@ -109,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
+            max_output_tokens=args.max_output_tokens,
+            progress=progress,
         )
     elif args.mode == "refine":
         result = refine(
@@ -118,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
+            max_output_tokens=args.max_output_tokens,
+            progress=progress,
         )
     elif args.mode == "hierarchical":
         result = hierarchical(
@@ -128,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
+            max_output_tokens=args.max_output_tokens,
+            progress=progress,
         )
     else:
         print(f"error: unknown mode: {args.mode}", file=sys.stderr)

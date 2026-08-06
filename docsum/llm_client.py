@@ -32,7 +32,7 @@ class LLMClient:
         prompt: str,
         system_prompt: str = "",
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
     ) -> str:
         """Send a prompt to the LLM and return the response text.
 

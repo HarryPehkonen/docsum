@@ -175,3 +175,52 @@ class TestCLI:
                 "--base-url", "http://localhost:8645/v1",
                 "--mode", "bogus",
             ])
+
+    def test_max_output_tokens_flag(self, temp_text_file):
+        """--max-output-tokens is passed through to the LLM."""
+        with patch("docsum.cli.LLMClient") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.complete.return_value = "Result"
+
+            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as out:
+                out_path = out.name
+
+            try:
+                main([
+                    "--input", temp_text_file,
+                    "--output", out_path,
+                    "--model", "test-model",
+                    "--base-url", "http://localhost:8645/v1",
+                    "--max-output-tokens", "16384",
+                ])
+
+                call_kwargs = mock_client.complete.call_args
+                assert call_kwargs.kwargs.get("max_tokens") == 16384
+            finally:
+                os.unlink(out_path)
+
+    def test_quiet_flag_suppresses_progress(self, temp_text_file):
+        """--quiet runs without progress bar."""
+        with patch("docsum.cli.LLMClient") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value = mock_client
+            mock_client.complete.return_value = "Result"
+
+            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as out:
+                out_path = out.name
+
+            try:
+                main([
+                    "--input", temp_text_file,
+                    "--output", out_path,
+                    "--model", "test-model",
+                    "--base-url", "http://localhost:8645/v1",
+                    "--quiet",
+                ])
+
+                # Should still produce output
+                with open(out_path) as f:
+                    assert f.read() == "Result"
+            finally:
+                os.unlink(out_path)

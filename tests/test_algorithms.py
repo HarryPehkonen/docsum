@@ -28,6 +28,15 @@ def reduce_prompt():
     return BUILTIN_PROMPTS["reduce"]
 
 
+@pytest.fixture
+def progress_calls():
+    """Record progress callback calls."""
+    calls = []
+    def callback(phase: str, current: int, total: int):
+        calls.append((phase, current, total))
+    return calls, callback
+
+
 class TestMapReduce:
     """Map-reduce: chunk → summarize each → combine."""
 
@@ -91,6 +100,40 @@ class TestMapReduce:
         )
         # Each chunk's content should appear in at least one prompt
         assert mock_client.complete.call_count >= 2
+
+    def test_progress_callback(self, mock_client, simple_prompt, reduce_prompt, progress_calls):
+        """Progress callback is called for each chunk and the reduce step."""
+        calls, callback = progress_calls
+        mock_client.complete.side_effect = lambda prompt, **kwargs: "result"
+        text = "This is a long sentence repeated many times. " * 500
+        map_reduce(
+            text=text,
+            client=mock_client,
+            prompt_template=simple_prompt,
+            reduce_template=reduce_prompt,
+            max_tokens=100,
+            progress=callback,
+        )
+        # Should have at least map + reduce calls
+        assert len(calls) > 0
+        phases = [c[0] for c in calls]
+        assert "map" in phases
+
+    def test_max_output_tokens_passed_through(self, mock_client, simple_prompt, reduce_prompt):
+        """max_output_tokens is passed to the LLM client."""
+        mock_client.complete.side_effect = lambda prompt, **kwargs: "result"
+        text = "Short text"
+        map_reduce(
+            text=text,
+            client=mock_client,
+            prompt_template=simple_prompt,
+            reduce_template=reduce_prompt,
+            max_tokens=1000,
+            max_output_tokens=16384,
+        )
+        # Check the call included max_tokens=16384
+        call_kwargs = mock_client.complete.call_args
+        assert call_kwargs.kwargs.get("max_tokens") == 16384
 
 
 class TestRefine:
