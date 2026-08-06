@@ -180,6 +180,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prep_prompt_group.add_argument("--prompt-file", help="file containing a custom prompt template with {text}")
 
+    prep_reduce_group = prep_p.add_mutually_exclusive_group()
+    prep_reduce_group.add_argument(
+        "--reduce-prompt",
+        choices=["reduce", "json_reduce"],
+        default="reduce",
+        help="built-in reduce prompt (default: reduce; use json_reduce for JSON output)",
+    )
+    prep_reduce_group.add_argument("--reduce-prompt-file", help="file containing a custom reduce prompt with {summaries}")
+
     prep_p.add_argument("--tokenizer-model", default="gpt-4", help="model name for token counting")
 
     # --- step subcommand ---
@@ -187,6 +196,8 @@ def build_parser() -> argparse.ArgumentParser:
     step_p.add_argument("--state", required=True, help="state file path")
     step_p.add_argument("--base-url", default="http://127.0.0.1:8645/v1", help="API endpoint")
     step_p.add_argument("--api-key", default="proxy", help="API key")
+    step_p.add_argument("--retry-backoff", type=float, default=0, help="seconds to wait between retries on failure (0 = no retry, e.g., 120 for 524 timeouts)")
+    step_p.add_argument("--max-retries", type=int, default=2, help="max retries before giving up (default: 2)")
 
     # --- finalize subcommand ---
     fin_p = subparsers.add_parser("finalize", help="combine all chunk results into final output")
@@ -287,7 +298,15 @@ def _cmd_prepare(args) -> int:
         return 1
 
     prompt_template = _load_prompt_template(args)
-    reduce_template = get_builtin_prompt("reduce")
+    if args.reduce_prompt_file:
+        try:
+            with open(args.reduce_prompt_file, "r", encoding="utf-8") as f:
+                reduce_template = f.read()
+        except FileNotFoundError:
+            print(f"error: reduce prompt file not found: {args.reduce_prompt_file}", file=sys.stderr)
+            return 1
+    else:
+        reduce_template = get_builtin_prompt(args.reduce_prompt)
 
     # Create a client (prepare doesn't call it, but step will need the settings)
     client = LLMClient(base_url=args.base_url, model=args.model, api_key=args.api_key)
@@ -319,14 +338,16 @@ def _cmd_prepare(args) -> int:
 
 def _cmd_step(args) -> int:
     """Step: process the next unprocessed chunk."""
-    client = LLMClient(base_url=args.base_url, model="placeholder", api_key=args.api_key)
-
-    # Load state to get the real model
     from docsum.step_state import load_state
     state = load_state(args.state)
     client = LLMClient(base_url=args.base_url, model=state.model, api_key=args.api_key)
 
-    result = step_process(state_path=args.state, client=client)
+    result = step_process(
+        state_path=args.state,
+        client=client,
+        retry_backoff=args.retry_backoff,
+        max_retries=args.max_retries,
+    )
     _print_json(result)
     return 0
 

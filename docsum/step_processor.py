@@ -19,6 +19,40 @@ from docsum.step_state import StepState, load_state, save_state
 from docsum.algorithms import _recursive_reduce
 
 
+# --- output cleanup --------------------------------------------------------
+
+def _clean_output(text: str) -> str:
+    """Clean up LLM output: strip whitespace, markdown fences, and extra braces.
+
+    - Strip leading/trailing whitespace
+    - Strip ```json ... ``` or ``` ... ``` markdown fences
+    - Strip extra trailing braces/brackets (LLM sometimes appends a stray one)
+    """
+    text = text.strip()
+
+    # Strip markdown fences: ```json\n...\n``` or ```\n...\n```
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Remove first line (```json or ```)
+        lines = lines[1:]
+        # Remove trailing ``` if present
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    # Strip extra trailing braces: if there are more closing than opening,
+    # remove the extras from the end
+    open_count = text.count("{")
+    close_count = text.count("}")
+    if close_count > open_count:
+        text = text.rstrip("}")
+        text = text.rstrip()
+        # Re-add the correct number of closing braces
+        text += "}" * open_count
+
+    return text
+
+
 # --- prepare ---------------------------------------------------------------
 
 def prepare(
@@ -68,12 +102,20 @@ def prepare(
 
 # --- step ------------------------------------------------------------------
 
-def step(state_path: str, client: LLMClient) -> dict:
+def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retries: int = 0) -> dict:
     """Process the next unprocessed chunk and save the result.
+
+    Args:
+        state_path: Path to the state JSON file.
+        client: LLM client for making completion calls.
+        retry_backoff: Seconds to wait between retries on failure (0 = no retry).
+        max_retries: Maximum number of retries before giving up (default: 2).
 
     Returns:
         Dictionary with: chunk_index, result, chunks_done, total_chunks, is_complete
     """
+    import time
+
     state = load_state(state_path)
 
     if state.total_chunks == 0:
@@ -114,7 +156,22 @@ def step(state_path: str, client: LLMClient) -> dict:
         # Map-reduce, hierarchical, or first chunk of refine: simple summarization
         prompt = render_prompt(state.prompt_template, chunk_text_to_process)
 
-    result = client.complete(prompt, max_tokens=state.max_output_tokens)
+    # Retry loop
+    last_error = None
+    attempts = max_retries + 1  # always at least 1 attempt
+    for attempt in range(attempts):
+        try:
+            result = client.complete(prompt, max_tokens=state.max_output_tokens)
+            break
+        except Exception as e:
+            last_error = e
+            if attempt < attempts - 1:
+                if retry_backoff > 0:
+                    time.sleep(retry_backoff)
+                # retry even with 0 backoff if max_retries > 0
+            else:
+                raise
+
     state.record_result(next_idx, result)
     save_state(state)
 
@@ -155,13 +212,14 @@ def finalize(state_path: str, client: LLMClient) -> dict:
     if state.mode == "refine":
         # Refine: running summary is the final result
         final = state.running_summary or state.get_results()[-1] if state.get_results() else ""
+        final = _clean_output(final)
         state.final_result = final
         save_state(state)
         return {"result": final, "is_complete": True}
 
     if state.total_chunks == 1:
         # Single chunk: result is the chunk summary, no reduce needed
-        final = state.get_results()[0]
+        final = _clean_output(state.get_results()[0])
         state.final_result = final
         save_state(state)
         return {"result": final, "is_complete": True}
@@ -182,6 +240,7 @@ def finalize(state_path: str, client: LLMClient) -> dict:
         reduce_prompt = render_reduce_prompt(state.reduce_template, state.get_results())
         final = client.complete(reduce_prompt, max_tokens=state.max_output_tokens)
 
+    final = _clean_output(final)
     state.final_result = final
     save_state(state)
     return {"result": final, "is_complete": True}

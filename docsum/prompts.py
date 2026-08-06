@@ -37,6 +37,15 @@ BUILTIN_PROMPTS: dict[str, str] = {
         "---\n\n"
         "{summaries}"
     ),
+    "json_reduce": (
+        "The following are JSON analyses of different sections of a larger document. "
+        "Merge them into a single JSON object with the same structure. "
+        "Deduplicate entries (e.g., characters with the same name, themes that overlap). "
+        "Concatenate key_events in order. Merge places, themes, and entities arrays. "
+        "Return ONLY valid JSON — no prose, no markdown fences.\n\n"
+        "---\n\n"
+        "{summaries}"
+    ),
 }
 
 
