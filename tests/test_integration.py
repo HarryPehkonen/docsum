@@ -47,6 +47,7 @@ class TestIntegrationMapReduce:
             out_path = out.name
         try:
             main([
+                "run",
                 "--input", temp_text_file,
                 "--output", out_path,
                 "--model", TEST_MODEL,
@@ -70,6 +71,7 @@ class TestIntegrationRefine:
             out_path = out.name
         try:
             main([
+                "run",
                 "--input", temp_text_file,
                 "--output", out_path,
                 "--model", TEST_MODEL,
@@ -92,6 +94,7 @@ class TestIntegrationHierarchical:
             out_path = out.name
         try:
             main([
+                "run",
                 "--input", temp_text_file,
                 "--output", out_path,
                 "--model", TEST_MODEL,
@@ -114,6 +117,7 @@ class TestIntegrationThemes:
             out_path = out.name
         try:
             main([
+                "run",
                 "--input", temp_text_file,
                 "--output", out_path,
                 "--model", TEST_MODEL,
