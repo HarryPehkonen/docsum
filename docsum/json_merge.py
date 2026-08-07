@@ -7,14 +7,18 @@ This is faster, free, deterministic, and never times out.
 Merge rules:
 - characters: deduplicate by name, merge descriptions (keep longest)
 - places, themes, entities: union as string arrays, deduplicate
-- key_events: concatenate all, sort by "order" field
+- key_events: concatenate all in document order
 - summary, moral_dilemma: keep the longest (most detailed)
 - unknown array fields: union and deduplicate
-- unknown scalar fields: keep the longest string value
+- unknown object fields: merge recursively
+- unknown scalar fields: keep the most detailed value, preserving its type
 """
 
 import json
 import re
+
+# Sort position for events with no usable "order" field — they go last.
+_NO_ORDER = 9999
 
 
 def _strip_fences(text: str) -> str:
@@ -41,53 +45,117 @@ def _parse_json_safely(text: str) -> dict | None:
         return None
 
 
-def _dedup_by_name(items: list[dict]) -> list[dict]:
-    """Deduplicate a list of dicts by their 'name' field, merging descriptions."""
-    seen: dict[str, dict] = {}
+def _identity(item) -> tuple:
+    """A hashable identity for a list item, including dicts and lists."""
+    try:
+        hash(item)
+    except TypeError:
+        return ("json", json.dumps(item, sort_keys=True, default=str))
+    return ("value", item)
+
+
+def _dedup_by_name(items: list) -> list:
+    """Deduplicate a list of items by name, merging their other fields.
+
+    Items are usually dicts with a 'name' field, but models sometimes return
+    bare strings instead (["Frodo", "Sam"]). A string and a dict with the same
+    name collapse into the dict, which carries more detail.
+    """
+    seen: dict = {}
     for item in items:
-        name = item.get("name", "")
-        if name in seen:
-            # Merge: keep the longest description, fill in missing fields
-            existing = seen[name]
-            for key, val in item.items():
-                if key == "name":
-                    continue
-                if key not in existing or not existing[key]:
-                    existing[key] = val
-                elif isinstance(val, str) and len(val) > len(str(existing[key])):
-                    existing[key] = val
+        if isinstance(item, dict):
+            key = item.get("name", "")
+        elif isinstance(item, str):
+            key = item
         else:
-            seen[name] = dict(item)
+            key = _identity(item)
+
+        if key not in seen:
+            seen[key] = dict(item) if isinstance(item, dict) else item
+            continue
+
+        existing = seen[key]
+        if not isinstance(item, dict):
+            continue  # a bare string adds nothing to what we already have
+        if not isinstance(existing, dict):
+            seen[key] = dict(item)  # the dict carries more detail than the string
+            continue
+        # Merge: keep the longest description, fill in missing fields
+        for field, val in item.items():
+            if field == "name":
+                continue
+            if field not in existing or not existing[field]:
+                existing[field] = val
+            elif isinstance(val, str) and len(val) > len(str(existing[field])):
+                existing[field] = val
     return list(seen.values())
 
 
-def _union_strings(*lists: list[str]) -> list[str]:
-    """Union multiple string lists, preserving order, deduplicating."""
-    seen: set[str] = set()
-    result: list[str] = []
+def _union_strings(*lists: list) -> list:
+    """Union multiple lists, preserving order, deduplicating.
+
+    Items are usually strings, but models sometimes return objects instead
+    ({"name": "Bridge"}), so unhashable items are keyed by a canonical
+    encoding rather than crashing the merge.
+    """
+    seen: set = set()
+    result: list = []
     for lst in lists:
         for item in lst:
-            if item not in seen:
-                seen.add(item)
+            key = _identity(item)
+            if key not in seen:
+                seen.add(key)
                 result.append(item)
     return result
 
 
+def _event_order(event) -> int:
+    """The 'order' field of an event as an int; models sometimes return "3"."""
+    if not isinstance(event, dict):
+        return _NO_ORDER
+    try:
+        return int(event.get("order", _NO_ORDER))
+    except (TypeError, ValueError):
+        return _NO_ORDER
+
+
 def _merge_key_events(*lists: list[dict]) -> list[dict]:
-    """Concatenate key_events from all chunks and sort by 'order' field."""
-    all_events: list[dict] = []
-    for lst in lists:
-        all_events.extend(lst)
-    # Sort by order; events without order go last
-    all_events.sort(key=lambda e: e.get("order", 9999))
-    return all_events
+    """Concatenate key_events from every chunk, in document order.
+
+    Each chunk usually numbers its own events from 1, so a global sort by
+    "order" interleaves the chunks (1, 1, 2, 2, ...). Sort globally only when
+    the order values are unique across all chunks — the one case where they
+    describe a single document-wide sequence. Otherwise keep chunk order,
+    which is document order.
+    """
+    numbered = [
+        (chunk_index, _event_order(event), event)
+        for chunk_index, lst in enumerate(lists)
+        for event in lst
+    ]
+    orders = [order for _, order, _ in numbered if order != _NO_ORDER]
+    if len(orders) == len(set(orders)):
+        numbered.sort(key=lambda item: item[1])
+    else:
+        numbered.sort(key=lambda item: (item[0], item[1]))
+    return [event for _, _, event in numbered]
 
 
-def _keep_longest(*values: str) -> str:
-    """Return the longest non-empty string from the arguments."""
-    result = ""
-    for v in values:
-        if v and len(str(v)) > len(str(result)):
+def _keep_longest(*values):
+    """Return the most detailed value, preserving its original type.
+
+    Numbers are compared numerically (the larger wins); everything else is
+    compared by the length of its string form, so the most detailed text
+    survives. Values are returned as-is — an int stays an int, a bool a bool.
+    """
+    candidates = [v for v in values if v is not None and v != ""]
+    if not candidates:
+        return ""
+    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in candidates):
+        return max(candidates)
+    result = candidates[0]
+    for v in candidates[1:]:
+        if len(str(v)) > len(str(result)):
             result = v
     return result
 
@@ -107,10 +175,12 @@ def merge_json_objects(*objects: dict) -> dict:
     # Known field merge strategies
     merged: dict = {}
 
-    # Collect all keys across all objects
-    all_keys = set()
+    # Collect all keys across all objects, in first-seen order so the merged
+    # output is deterministic
+    all_keys: dict = {}
     for obj in objects:
-        all_keys.update(obj.keys())
+        for key in obj:
+            all_keys[key] = None
 
     for key in all_keys:
         values = [obj.get(key) for obj in objects if key in obj]
@@ -125,13 +195,10 @@ def merge_json_objects(*objects: dict) -> dict:
                     all_chars.extend(v)
             merged[key] = _dedup_by_name(all_chars)
 
-        # Key events: concatenate and sort by order
+        # Key events: concatenate in document order (one list per chunk, so
+        # _merge_key_events can tell chunk-local numbering from a global one)
         elif key == "key_events":
-            all_events: list[dict] = []
-            for v in values:
-                if isinstance(v, list):
-                    all_events.extend(v)
-            merged[key] = _merge_key_events(all_events)
+            merged[key] = _merge_key_events(*[v for v in values if isinstance(v, list)])
 
         # String arrays: union and deduplicate
         elif key in ("places", "themes", "entities", "species", "technology"):
@@ -140,29 +207,19 @@ def merge_json_objects(*objects: dict) -> dict:
 
         # Scalar fields: keep the longest
         elif key in ("summary", "moral_dilemma", "title"):
-            merged[key] = _keep_longest(*[str(v) for v in values if v])
+            merged[key] = _keep_longest(*values)
 
         # Unknown list fields: union
         elif isinstance(values[0], list):
-            all_items: list = []
-            for v in values:
-                if isinstance(v, list):
-                    all_items.extend(v)
-            # Deduplicate if items are hashable (strings, numbers)
-            try:
-                seen: set = set()
-                result: list = []
-                for item in all_items:
-                    if item not in seen:
-                        seen.add(item)
-                        result.append(item)
-                merged[key] = result
-            except TypeError:
-                merged[key] = all_items
+            merged[key] = _union_strings(*[v for v in values if isinstance(v, list)])
 
-        # Unknown scalar fields: keep the longest
+        # Unknown object fields: merge recursively
+        elif all(isinstance(v, dict) for v in values):
+            merged[key] = merge_json_objects(*values)
+
+        # Unknown scalar fields: keep the most detailed value, as-is
         else:
-            merged[key] = _keep_longest(*[str(v) for v in values if v])
+            merged[key] = _keep_longest(*values)
 
     return merged
 

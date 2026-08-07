@@ -9,6 +9,7 @@ All algorithms accept an optional `progress` callback for reporting progress:
     def progress(phase: str, current: int, total: int): ...
 """
 
+import re
 from typing import Callable, Optional
 
 from docsum.chunker import chunk_text, count_tokens
@@ -17,9 +18,56 @@ from docsum.prompts import render_prompt, render_reduce_prompt
 
 ProgressCallback = Optional[Callable[[str, int, int], None]]
 
+_REFINE_PLACEHOLDER_RE = re.compile(r"\{(summary|text)\}")
+
+JSON_REFINE_INSTRUCTION = (
+    "Here is a current JSON analysis of a document, followed by the next section of that document. "
+    "Update the JSON to incorporate the new information. "
+    "You MUST preserve ALL existing fields — do not drop any field even if the new section doesn't mention it. "
+    "Merge new entries into existing arrays (characters, places, themes, key_events, entities, species, technology). "
+    "Deduplicate by name where applicable. Keep key_events sorted by order. "
+    "Return ONLY valid JSON — no prose, no markdown fences.\n\n"
+    "Current JSON:\n{summary}\n\n"
+    "New text:\n{text}"
+)
+
+PROSE_REFINE_INSTRUCTION = (
+    "Here is a current summary of a document, followed by the next section of that document. "
+    "Update the summary to incorporate the new information. Keep the summary concise and "
+    "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
+    "Current summary:\n{summary}\n\n"
+    "New text:\n{text}"
+)
+
 
 def _noop_progress(phase: str, current: int, total: int) -> None:
     pass
+
+
+def wants_json(prompt_template: str) -> bool:
+    """Whether a chunk prompt asks for JSON output.
+
+    Any mention of JSON counts: prompts phrase the request many ways ("return
+    only valid JSON", "respond in JSON format", "a JSON object with..."), and
+    falling through to prose mode drops fields on every refine step.
+    """
+    return "json" in prompt_template.lower()
+
+
+def refine_instruction_for(prompt_template: str) -> str:
+    """The refine instruction matching the chunk prompt's output format."""
+    return JSON_REFINE_INSTRUCTION if wants_json(prompt_template) else PROSE_REFINE_INSTRUCTION
+
+
+def fill_refine_instruction(instruction: str, summary: str, chunk: str) -> str:
+    """Substitute {summary} and {text} in a single pass.
+
+    Sequential .replace() calls would let a literal "{text}" in the running
+    summary be replaced by the chunk body on the next iteration, corrupting
+    the summary.
+    """
+    values = {"summary": summary, "text": chunk}
+    return _REFINE_PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], instruction)
 
 
 def map_reduce(
@@ -128,29 +176,11 @@ def refine(
 
     # Subsequent chunks: refine the running summary
     # Detect JSON output and reinforce the schema to prevent field loss
-    if '"json"' in prompt_template.lower() or "return only json" in prompt_template.lower() or "return only valid json" in prompt_template.lower():
-        refine_instruction = (
-            "Here is a current JSON analysis of a document, followed by the next section of that document. "
-            "Update the JSON to incorporate the new information. "
-            "You MUST preserve ALL existing fields — do not drop any field even if the new section doesn't mention it. "
-            "Merge new entries into existing arrays (characters, places, themes, key_events, entities, species, technology). "
-            "Deduplicate by name where applicable. Keep key_events sorted by order. "
-            "Return ONLY valid JSON — no prose, no markdown fences.\n\n"
-            "Current JSON:\n{summary}\n\n"
-            "New text:\n{text}"
-        )
-    else:
-        refine_instruction = (
-            "Here is a current summary of a document, followed by the next section of that document. "
-            "Update the summary to incorporate the new information. Keep the summary concise and "
-            "well-organized. Preserve important details from both the existing summary and the new text.\n\n"
-            "Current summary:\n{summary}\n\n"
-            "New text:\n{text}"
-        )
+    refine_instruction = refine_instruction_for(prompt_template)
 
     for i, chunk in enumerate(chunks[1:], start=2):
         progress("refine", i, total)
-        prompt = refine_instruction.replace("{summary}", running_summary).replace("{text}", chunk)
+        prompt = fill_refine_instruction(refine_instruction, running_summary, chunk)
         running_summary = client.complete(prompt, max_tokens=max_output_tokens)
 
     return running_summary
