@@ -212,10 +212,13 @@ be able to tell a decision from an oversight. Status as of 2026-09-20 (card t_90
   The gate checks only the files a branch touches, so this debt costs nothing until
   someone edits one of them — and then it costs that file's reformat, in that commit.
   `tests/test_json_merge.py` is in the list and has no lint finding at all.
-- **Rules this repo has never adopted** stay off on purpose: `I001` (14 unsorted import
-  blocks), `UP045`/`UP035` (5 + 1 `Optional[X]` that could be `X | None`), `EXE001`
-  (2 shebangs without the exec bit), `TRY002`, `SIM114`. Switching one on the way the
-  others were switched off: fix the findings, add the rule to `select`, same commit.
+- **Rules this repo has never adopted** stay off on purpose: `I001` (12 unsorted import
+  blocks — 14 before this card's edits), `UP045`/`UP035` (5 + 1 `Optional[X]` that could be
+  `X | None`), `EXE001` (2 shebangs without the exec bit), `TRY002`, `SIM114`. Measured
+  with the no-config command the old baseline used, `uv run --with ruff ruff check
+  --isolated .`: **58 findings before this card, 46 after**. Switching one of these rules
+  on the way the others were switched off: fix the findings, add the rule to `select`, same
+  commit.
 - **`requirements.txt` is unpinned** (`pytest`, `pytest-mock`, `openai`, `tiktoken`,
   `tqdm` — no version specifiers). The gate's clean-environment stage resolves whatever the
   index has today and prints what it got; on 2026-09-20 that was `pytest 9.1.1`,
