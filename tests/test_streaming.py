@@ -167,12 +167,12 @@ class TestStreamFlagReachesTheApiCall:
 
     def _call(self, algorithm, client, **extra):
         """Call an algorithm the way cli.py does — `refine` has no reduce template."""
-        kwargs = dict(
-            text=self._long_text(),
-            client=client,
-            prompt_template=BUILTIN_PROMPTS["summary"],
-            max_tokens=100,
-        )
+        kwargs = {
+            "text": self._long_text(),
+            "client": client,
+            "prompt_template": BUILTIN_PROMPTS["summary"],
+            "max_tokens": 100,
+        }
         if algorithm is not refine:
             kwargs["reduce_template"] = BUILTIN_PROMPTS["reduce"]
         return algorithm(**kwargs, **extra)
