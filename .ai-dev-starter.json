@@ -1,16 +1,16 @@
 {
   "kit": "AI-DEV-STARTER",
   "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
-  "revision": "fb387f2044989f76bb2fe234cef39e85ac050328",
+  "revision": "951608c2675a2f5c2d0b59d9c19c632d23a043af",
   "recorded_at": "2026-09-20",
   "record_kind": "retroactive",
-  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks and the gate script are byte-identical to the kit's: the gate script's one divergence was a kit fix that landed after the copy, and it was synced in on 2026-09-20, so nothing here is adapted by hand any more. The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit.",
+  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks and the gate script are byte-identical to the kit's: the gate script's one divergence was a kit fix that landed after the copy, and it was synced in on 2026-09-20, so nothing here is adapted by hand any more. The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit. **2026-09-20, card t_0cc793fb:** `revision` moved to 951608c because `scripts/gate.sh` is a byte copy again — taken wholesale from the kit, which gained the `kit probes` step (\"a fix that must propagate ships a probe\"). It SKIPs here until this repo carries a probe of its own; the point of copying it whole is that the gate stays one file and cannot drift into a fork by accident.",
   "files": [
     {
       "repo_path": "scripts/gate.sh",
       "kit_path": "templates/python/gate.sh",
-      "repo_sha256": "a4c9df4c0457aa46b1386759183a83737f12ca803eac52ee45ebe6bbbc368a7f",
-      "kit_sha256": "a4c9df4c0457aa46b1386759183a83737f12ca803eac52ee45ebe6bbbc368a7f",
+      "repo_sha256": "ff80c093558f8083c72fa493bbeef7991edde7f9e09195f0edc767252615f6ed",
+      "kit_sha256": "ff80c093558f8083c72fa493bbeef7991edde7f9e09195f0edc767252615f6ed",
       "adapted": false
     },
     {
@@ -23,15 +23,15 @@
     {
       "repo_path": ".githooks/pre-push",
       "kit_path": "templates/hooks/pre-push",
-      "repo_sha256": "2c82ed7099fc5687795264521be327fdda23e8c02eadd3ac12bd9667186c0d18",
-      "kit_sha256": "2c82ed7099fc5687795264521be327fdda23e8c02eadd3ac12bd9667186c0d18",
+      "repo_sha256": "f94958bcd22089f12d3987564ec2965d99577f6c667ee64ded466aa937e9a5eb",
+      "kit_sha256": "f94958bcd22089f12d3987564ec2965d99577f6c667ee64ded466aa937e9a5eb",
       "adapted": false
     },
     {
       "repo_path": "INCIDENTS.md",
       "kit_path": "INCIDENTS.md",
       "repo_sha256": "ca2019ef1a200a90dd3ba9a60863c4529b608a897cfc4b92894d5f465bd4027c",
-      "kit_sha256": "28928d4081780f7fd1432112eba4261e32e5a8985964378285b944f9576d88ff",
+      "kit_sha256": "aef9beb070e319176ef135eed5317ec8caab4bb0192a68a452c9d6841ebd4c45",
       "adapted": true,
       "adapted_why": "Seeded from the kit's rule block on 2026-09-19 and then grown to 278 lines of this repo's own history (the kit's file is 159): per-repo incident log, so a sync must never overwrite it with the kit's entries."
     },

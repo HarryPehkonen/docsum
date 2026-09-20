@@ -18,9 +18,12 @@ set -uo pipefail
 root=$(git rev-parse --show-toplevel) || exit 1
 
 if [ -x "$root/tools/ci.sh" ]; then
+    # kitprobes is in this list on purpose: a fix that must propagate ships a probe, and the
+    # push is the last moment a repo can notice it is behind one (it runs in under a second
+    # and needs no kit checkout). Docs: KIT-REVISION-CONVENTION.md.
     exec "$root/tools/ci.sh" \
         --require-clean \
-        tree format build tests version asan tsan tidy pristine
+        tree format kitprobes build tests version asan tsan tidy pristine
 fi
 
 if [ -x "$root/scripts/gate.sh" ]; then

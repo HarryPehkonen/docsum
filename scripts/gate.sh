@@ -521,6 +521,28 @@ if [ -n "$import_name" ] && [ -n "$IDENTITY_PY" ]; then
     fi
 fi
 
+# ---------------------------------------------------------------- kit probes
+# A fix that must propagate ships a probe (docs/KIT-REVISION-CONVENTION.md). Each script in
+# tools/kit-probes/ holds this gate to ONE kit fix's contract — name and behaviour, not
+# bytes — and exits non-zero when the fix is absent: offline, no kit checkout, no build, <1 s.
+# The directory IS the list of fixes this copy claims to carry, so absence fails here instead
+# of sitting in prose. A missing directory is not a failure: it means this copy carries no
+# probe yet.
+step "kit probes (the fixes this copy claims to carry)"
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+if [ ! -d tools/kit-probes ]; then
+    echo "  no tools/kit-probes/ — this copy carries no kit probe yet"
+else
+    for probe in tools/kit-probes/*.sh; do
+        [ -f "$probe" ] || continue
+        if bash "$probe" "$self" "$PWD"; then
+            echo "  ok   $(basename "$probe")"
+        else
+            fail "$(basename "$probe") — this copy is behind that kit fix (see tools/kit-probes/)"
+        fi
+    done
+fi
+
 if [ "$status" -eq 0 ]; then
     printf '\nGATE PASSED%s\n' "${late_note:-}"
 else
