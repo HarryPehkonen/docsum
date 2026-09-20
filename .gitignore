@@ -7,3 +7,9 @@ __pycache__/
 
 # Test artifacts
 .pytest_cache/
+
+# Batch run scratch: per-episode state JSON + logs written by the batch drivers in
+# ~/hermes-workspace/docsum-scratch/ (previously 398 untracked files in this repo's
+# root — see INCIDENTS.md, 2026-09-20). Run output is never committed; the directory
+# is named here so a re-run stays out of `git status` instead of drowning it.
+work_*/
