@@ -62,10 +62,20 @@ Prompt:
 
 Output:
   --output, -o FILE       Write to file (default: stdout)
+  --max-output-tokens N   Max tokens per LLM response (default: 8192)
+  --no-max-output-tokens  Omit max_tokens from the API call (use the model's default)
+  --stream                Stream each API call — keeps the connection active while
+                          the model generates, which avoids gateway 524 timeouts on
+                          long chunks. The reply is still assembled and returned whole.
+  --quiet, -q             Suppress the progress bar (for piping)
 
 Other:
   --tokenizer-model MODEL  Model for token counting (default: gpt-4)
 ```
+
+`--stream` applies to every mode and to the step-by-step subcommands
+(`prepare` records it in the state file, so `step` uses it too). It changes only
+how the response travels, never the text you get back.
 
 ## Examples
 

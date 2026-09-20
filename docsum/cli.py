@@ -40,7 +40,21 @@ import sys
 from docsum.algorithms import map_reduce, refine, hierarchical
 from docsum.llm_client import LLMClient
 from docsum.prompts import BUILTIN_PROMPTS, get_builtin_prompt
-from docsum.step_processor import prepare as step_prepare, step as step_process, finalize as step_finalize, get_status
+from docsum.step_processor import (
+    prepare as step_prepare,
+    step as step_process,
+    finalize as step_finalize,
+    get_status,
+)
+
+# One definition, so `run` and `prepare` cannot drift apart in what they promise.
+# `--stream` only changes the transport (the reply arrives as SSE chunks and is
+# joined before it is returned); the text a caller gets back is identical.
+_STREAM_HELP = (
+    "send each LLM call as a stream (keeps the connection active while the model "
+    "generates, which helps avoid gateway 524 timeouts; the response is still "
+    "returned whole)"
+)
 
 
 def _make_progress_bar(quiet: bool):
@@ -61,6 +75,7 @@ def _make_progress_bar(quiet: bool):
                 print(f"  {phase}: {current}/{total}", file=sys.stderr, flush=True)
             elif current == total:
                 print(f"  {phase}: {current}/{total} done", file=sys.stderr, flush=True)
+
         return simple_progress
 
     # tqdm progress bar
@@ -114,16 +129,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- monolithic mode (default, no subcommand) ---
     # Use a "run" subcommand to disambiguate, but also accept bare args
-    run_p = subparsers.add_parser("run", help="process the whole document in one invocation (monolithic mode)")
+    run_p = subparsers.add_parser(
+        "run", help="process the whole document in one invocation (monolithic mode)"
+    )
 
     # Input / output
     run_p.add_argument("--input", "-i", required=True, help="input text file")
     run_p.add_argument("--output", "-o", help="output file (default: stdout)")
 
     # LLM connection
-    run_p.add_argument("--model", "-m", required=True, help="model ID (e.g., z-ai/glm-5.2)")
-    run_p.add_argument("--base-url", default="http://127.0.0.1:8645/v1", help="OpenAI-compatible API endpoint (default: Hermes proxy)")
-    run_p.add_argument("--api-key", default="proxy", help="API key (default: 'proxy' for Hermes proxy)")
+    run_p.add_argument(
+        "--model", "-m", required=True, help="model ID (e.g., z-ai/glm-5.2)"
+    )
+    run_p.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8645/v1",
+        help="OpenAI-compatible API endpoint (default: Hermes proxy)",
+    )
+    run_p.add_argument(
+        "--api-key", default="proxy", help="API key (default: 'proxy' for Hermes proxy)"
+    )
 
     # Algorithm
     run_p.add_argument(
@@ -132,14 +157,38 @@ def build_parser() -> argparse.ArgumentParser:
         default="map-reduce",
         help="summarization algorithm (default: map-reduce)",
     )
-    run_p.add_argument("--max-tokens", type=int, default=2000, help="max tokens per chunk (default: 2000)")
-    run_p.add_argument("--overlap-tokens", type=int, default=0, help="token overlap between chunks (default: 0)")
+    run_p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=2000,
+        help="max tokens per chunk (default: 2000)",
+    )
+    run_p.add_argument(
+        "--overlap-tokens",
+        type=int,
+        default=0,
+        help="token overlap between chunks (default: 0)",
+    )
 
     # Output control
-    run_p.add_argument("--max-output-tokens", type=int, default=8192, help="max tokens for LLM response per call (default: 8192)")
-    run_p.add_argument("--no-max-output-tokens", action="store_true", help="omit max_tokens from API call (use model default — may increase timeout risk)")
-    run_p.add_argument("--stream", action="store_true", help="use streaming mode (keeps connection active, helps avoid 524 timeouts)")
-    run_p.add_argument("--quiet", "-q", action="store_true", help="suppress progress bar (for piping/gateway use)")
+    run_p.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=8192,
+        help="max tokens for LLM response per call (default: 8192)",
+    )
+    run_p.add_argument(
+        "--no-max-output-tokens",
+        action="store_true",
+        help="omit max_tokens from API call (use model default — may increase timeout risk)",
+    )
+    run_p.add_argument("--stream", action="store_true", help=_STREAM_HELP)
+    run_p.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="suppress progress bar (for piping/gateway use)",
+    )
 
     # Prompt
     run_prompt_group = run_p.add_mutually_exclusive_group()
@@ -149,18 +198,32 @@ def build_parser() -> argparse.ArgumentParser:
         default="summary",
         help="built-in prompt template (default: summary)",
     )
-    run_prompt_group.add_argument("--prompt-file", help="file containing a custom prompt template with {text}")
+    run_prompt_group.add_argument(
+        "--prompt-file", help="file containing a custom prompt template with {text}"
+    )
 
     # Model for tokenization
-    run_p.add_argument("--tokenizer-model", default="gpt-4", help="model name for token counting (default: gpt-4)")
+    run_p.add_argument(
+        "--tokenizer-model",
+        default="gpt-4",
+        help="model name for token counting (default: gpt-4)",
+    )
 
     # --- prepare subcommand ---
-    prep_p = subparsers.add_parser("prepare", help="chunk the input and initialize step-by-step state")
+    prep_p = subparsers.add_parser(
+        "prepare", help="chunk the input and initialize step-by-step state"
+    )
 
     prep_p.add_argument("--input", "-i", required=True, help="input text file")
-    prep_p.add_argument("--state", required=True, help="state file path (will be created)")
+    prep_p.add_argument(
+        "--state", required=True, help="state file path (will be created)"
+    )
     prep_p.add_argument("--model", "-m", required=True, help="model ID")
-    prep_p.add_argument("--base-url", default="http://127.0.0.1:8645/v1", help="OpenAI-compatible API endpoint")
+    prep_p.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8645/v1",
+        help="OpenAI-compatible API endpoint",
+    )
     prep_p.add_argument("--api-key", default="proxy", help="API key")
 
     prep_p.add_argument(
@@ -169,11 +232,30 @@ def build_parser() -> argparse.ArgumentParser:
         default="map-reduce",
         help="summarization algorithm (default: map-reduce)",
     )
-    prep_p.add_argument("--max-tokens", type=int, default=2000, help="max tokens per chunk (default: 2000)")
-    prep_p.add_argument("--overlap-tokens", type=int, default=0, help="token overlap between chunks (default: 0)")
-    prep_p.add_argument("--max-output-tokens", type=int, default=8192, help="max tokens for LLM response per call (default: 8192)")
-    prep_p.add_argument("--no-max-output-tokens", action="store_true", help="omit max_tokens from API call (use model default)")
-    prep_p.add_argument("--stream", action="store_true", help="use streaming mode for LLM calls (helps avoid 524 timeouts)")
+    prep_p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=2000,
+        help="max tokens per chunk (default: 2000)",
+    )
+    prep_p.add_argument(
+        "--overlap-tokens",
+        type=int,
+        default=0,
+        help="token overlap between chunks (default: 0)",
+    )
+    prep_p.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=8192,
+        help="max tokens for LLM response per call (default: 8192)",
+    )
+    prep_p.add_argument(
+        "--no-max-output-tokens",
+        action="store_true",
+        help="omit max_tokens from API call (use model default)",
+    )
+    prep_p.add_argument("--stream", action="store_true", help=_STREAM_HELP)
 
     prep_prompt_group = prep_p.add_mutually_exclusive_group()
     prep_prompt_group.add_argument(
@@ -182,7 +264,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="summary",
         help="built-in prompt template (default: summary)",
     )
-    prep_prompt_group.add_argument("--prompt-file", help="file containing a custom prompt template with {text}")
+    prep_prompt_group.add_argument(
+        "--prompt-file", help="file containing a custom prompt template with {text}"
+    )
 
     prep_reduce_group = prep_p.add_mutually_exclusive_group()
     prep_reduce_group.add_argument(
@@ -191,27 +275,50 @@ def build_parser() -> argparse.ArgumentParser:
         default="reduce",
         help="built-in reduce prompt (default: reduce; use json_reduce for JSON output)",
     )
-    prep_reduce_group.add_argument("--reduce-prompt-file", help="file containing a custom reduce prompt with {summaries}")
+    prep_reduce_group.add_argument(
+        "--reduce-prompt-file",
+        help="file containing a custom reduce prompt with {summaries}",
+    )
 
-    prep_p.add_argument("--tokenizer-model", default="gpt-4", help="model name for token counting")
+    prep_p.add_argument(
+        "--tokenizer-model", default="gpt-4", help="model name for token counting"
+    )
 
     # --- step subcommand ---
     step_p = subparsers.add_parser("step", help="process the next unprocessed chunk")
     step_p.add_argument("--state", required=True, help="state file path")
-    step_p.add_argument("--base-url", default="http://127.0.0.1:8645/v1", help="API endpoint")
+    step_p.add_argument(
+        "--base-url", default="http://127.0.0.1:8645/v1", help="API endpoint"
+    )
     step_p.add_argument("--api-key", default="proxy", help="API key")
-    step_p.add_argument("--retry-backoff", type=float, default=0, help="seconds to wait between retries on failure (0 = no retry, e.g., 120 for 524 timeouts)")
-    step_p.add_argument("--max-retries", type=int, default=2, help="max retries before giving up (default: 2)")
+    step_p.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=0,
+        help="seconds to wait between retries on failure (0 = no retry, e.g., 120 for 524 timeouts)",
+    )
+    step_p.add_argument(
+        "--max-retries",
+        type=int,
+        default=2,
+        help="max retries before giving up (default: 2)",
+    )
 
     # --- finalize subcommand ---
-    fin_p = subparsers.add_parser("finalize", help="combine all chunk results into final output")
+    fin_p = subparsers.add_parser(
+        "finalize", help="combine all chunk results into final output"
+    )
     fin_p.add_argument("--state", required=True, help="state file path")
     fin_p.add_argument("--output", "-o", help="output file (default: stdout)")
-    fin_p.add_argument("--base-url", default="http://127.0.0.1:8645/v1", help="API endpoint")
+    fin_p.add_argument(
+        "--base-url", default="http://127.0.0.1:8645/v1", help="API endpoint"
+    )
     fin_p.add_argument("--api-key", default="proxy", help="API key")
 
     # --- status subcommand ---
-    status_p = subparsers.add_parser("status", help="report progress without processing")
+    status_p = subparsers.add_parser(
+        "status", help="report progress without processing"
+    )
     status_p.add_argument("--state", required=True, help="state file path")
 
     return parser
@@ -265,26 +372,40 @@ def _cmd_run(args) -> int:
 
     if args.mode == "map-reduce":
         result = map_reduce(
-            text=text, client=client, prompt_template=prompt_template,
-            reduce_template=reduce_template, max_tokens=args.max_tokens,
-            overlap_tokens=args.overlap_tokens, model=args.tokenizer_model,
+            text=text,
+            client=client,
+            prompt_template=prompt_template,
+            reduce_template=reduce_template,
+            max_tokens=args.max_tokens,
+            overlap_tokens=args.overlap_tokens,
+            model=args.tokenizer_model,
             max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            stream=run_stream,
             progress=progress,
         )
     elif args.mode == "refine":
         result = refine(
-            text=text, client=client, prompt_template=prompt_template,
-            max_tokens=args.max_tokens, overlap_tokens=args.overlap_tokens,
+            text=text,
+            client=client,
+            prompt_template=prompt_template,
+            max_tokens=args.max_tokens,
+            overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
             max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            stream=run_stream,
             progress=progress,
         )
     elif args.mode == "hierarchical":
         result = hierarchical(
-            text=text, client=client, prompt_template=prompt_template,
-            reduce_template=reduce_template, max_tokens=args.max_tokens,
-            overlap_tokens=args.overlap_tokens, model=args.tokenizer_model,
+            text=text,
+            client=client,
+            prompt_template=prompt_template,
+            reduce_template=reduce_template,
+            max_tokens=args.max_tokens,
+            overlap_tokens=args.overlap_tokens,
+            model=args.tokenizer_model,
             max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            stream=run_stream,
             progress=progress,
         )
     else:
@@ -314,7 +435,10 @@ def _cmd_prepare(args) -> int:
             with open(args.reduce_prompt_file, "r", encoding="utf-8") as f:
                 reduce_template = f.read()
         except FileNotFoundError:
-            print(f"error: reduce prompt file not found: {args.reduce_prompt_file}", file=sys.stderr)
+            print(
+                f"error: reduce prompt file not found: {args.reduce_prompt_file}",
+                file=sys.stderr,
+            )
             return 1
     else:
         reduce_template = get_builtin_prompt(args.reduce_prompt)
@@ -339,19 +463,22 @@ def _cmd_prepare(args) -> int:
         tokenizer_model=args.tokenizer_model,
     )
 
-    _print_json({
-        "status": "prepared",
-        "total_chunks": state.total_chunks,
-        "mode": state.mode,
-        "model": state.model,
-        "state_file": args.state,
-    })
+    _print_json(
+        {
+            "status": "prepared",
+            "total_chunks": state.total_chunks,
+            "mode": state.mode,
+            "model": state.model,
+            "state_file": args.state,
+        }
+    )
     return 0
 
 
 def _cmd_step(args) -> int:
     """Step: process the next unprocessed chunk."""
     from docsum.step_state import load_state
+
     state = load_state(args.state)
     client = LLMClient(base_url=args.base_url, model=state.model, api_key=args.api_key)
 
@@ -368,6 +495,7 @@ def _cmd_step(args) -> int:
 def _cmd_finalize(args) -> int:
     """Finalize: combine all chunk results into final output."""
     from docsum.step_state import load_state
+
     state = load_state(args.state)
     client = LLMClient(base_url=args.base_url, model=state.model, api_key=args.api_key)
 

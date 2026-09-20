@@ -1,9 +1,11 @@
 """Tests for streaming mode and no-max-output-tokens."""
 
-from unittest.mock import patch, MagicMock, PropertyMock
-import pytest
+from unittest.mock import MagicMock, patch
 
+from docsum.algorithms import hierarchical, map_reduce, refine
+from docsum.cli import main
 from docsum.llm_client import LLMClient
+from docsum.prompts import BUILTIN_PROMPTS
 
 
 class TestStreamingMode:
@@ -19,7 +21,7 @@ class TestStreamingMode:
         mock_client.chat.completions.create.return_value = mock_response
 
         client = LLMClient(base_url="http://localhost:8645/v1", model="test")
-        result = client.complete("Hello")
+        client.complete("Hello")
 
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
         assert call_kwargs.get("stream") is not True or "stream" not in call_kwargs
@@ -37,7 +39,9 @@ class TestStreamingMode:
         chunk2.choices = [MagicMock(delta=MagicMock(content=" world"))]
         chunk3 = MagicMock()
         chunk3.choices = [MagicMock(delta=MagicMock(content=None))]
-        mock_client.chat.completions.create.return_value = iter([chunk1, chunk2, chunk3])
+        mock_client.chat.completions.create.return_value = iter(
+            [chunk1, chunk2, chunk3]
+        )
 
         client = LLMClient(base_url="http://localhost:8645/v1", model="test")
         result = client.complete("Hello", stream=True)
@@ -137,3 +141,97 @@ class TestNoMaxOutputTokens:
         assert call_kwargs.get("stream") is True
         assert "max_tokens" not in call_kwargs or call_kwargs["max_tokens"] is None
         assert result == "streamed result"
+
+
+class TestStreamFlagReachesTheApiCall:
+    """`--stream` must change the API call, from every entry point.
+
+    Regression pin (2026-09-19): `docsum run` parsed the flag, copied it into a
+    local at cli.py:264, and never passed it to the algorithms, so the flag was
+    documented, accepted, and silently ignored. `prepare` did honour it, so the
+    lie was invisible from the help text — this is the test that says the whole
+    flag is real.
+    """
+
+    def _client(self):
+        client = MagicMock(spec=LLMClient)
+        client.complete.side_effect = lambda prompt, **kwargs: "ok"
+        return client
+
+    def _long_text(self):
+        # Long enough to force several chunks at max_tokens=100
+        return "Sentence one about Picard and Data. " * 200
+
+    def _streams(self, client):
+        return [call.kwargs.get("stream") for call in client.complete.call_args_list]
+
+    def _call(self, algorithm, client, **extra):
+        """Call an algorithm the way cli.py does — `refine` has no reduce template."""
+        kwargs = dict(
+            text=self._long_text(),
+            client=client,
+            prompt_template=BUILTIN_PROMPTS["summary"],
+            max_tokens=100,
+        )
+        if algorithm is not refine:
+            kwargs["reduce_template"] = BUILTIN_PROMPTS["reduce"]
+        return algorithm(**kwargs, **extra)
+
+    def test_map_reduce_forwards_stream(self):
+        client = self._client()
+        self._call(map_reduce, client, stream=True)
+        assert self._streams(client)
+        assert all(s is True for s in self._streams(client))
+
+    def test_refine_forwards_stream(self):
+        client = self._client()
+        self._call(refine, client, stream=True)
+        assert self._streams(client)
+        assert all(s is True for s in self._streams(client))
+
+    def test_hierarchical_forwards_stream(self):
+        client = self._client()
+        self._call(hierarchical, client, stream=True)
+        assert self._streams(client)
+        assert all(s is True for s in self._streams(client))
+
+    def test_algorithms_do_not_stream_by_default(self):
+        """No `--stream` means stream=False — not "whatever the default is"."""
+        for algorithm in (map_reduce, refine, hierarchical):
+            client = self._client()
+            self._call(algorithm, client)
+            streams = self._streams(client)
+            assert streams, algorithm.__name__
+            assert all(s is False for s in streams), algorithm.__name__
+
+    def _run_cli(self, tmp_path, *extra):
+        src = tmp_path / "input.txt"
+        src.write_text(self._long_text(), encoding="utf-8")
+        with patch("docsum.cli.LLMClient") as mock_cls:
+            client = self._client()
+            mock_cls.return_value = client
+            rc = main(
+                [
+                    "run",
+                    "--input",
+                    str(src),
+                    "--model",
+                    "test-model",
+                    "--max-tokens",
+                    "100",
+                    "--quiet",
+                    *extra,
+                ]
+            )
+        assert rc == 0
+        return client
+
+    def test_cli_run_stream_flag_reaches_the_client(self, tmp_path):
+        client = self._run_cli(tmp_path, "--stream")
+        assert self._streams(client)
+        assert all(s is True for s in self._streams(client))
+
+    def test_cli_run_without_stream_flag_does_not_stream(self, tmp_path):
+        client = self._run_cli(tmp_path)
+        assert self._streams(client)
+        assert all(s is False for s in self._streams(client))

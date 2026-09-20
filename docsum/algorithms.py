@@ -56,7 +56,11 @@ def wants_json(prompt_template: str) -> bool:
 
 def refine_instruction_for(prompt_template: str) -> str:
     """The refine instruction matching the chunk prompt's output format."""
-    return JSON_REFINE_INSTRUCTION if wants_json(prompt_template) else PROSE_REFINE_INSTRUCTION
+    return (
+        JSON_REFINE_INSTRUCTION
+        if wants_json(prompt_template)
+        else PROSE_REFINE_INSTRUCTION
+    )
 
 
 def fill_refine_instruction(instruction: str, summary: str, chunk: str) -> str:
@@ -79,6 +83,7 @@ def map_reduce(
     overlap_tokens: int = 0,
     model: str = "gpt-4",
     max_output_tokens: int = 8192,
+    stream: bool = False,
     progress: ProgressCallback = None,
 ) -> str:
     """Summarize text using the map-reduce algorithm.
@@ -96,20 +101,25 @@ def map_reduce(
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
         max_output_tokens: Maximum tokens for LLM response per call.
+        stream: Pass each API call as a streaming request. The text is still
+            collected and returned whole — the point is that the connection stays
+            active while the model generates, which is what avoids gateway 524s.
         progress: Optional callback(phase, current, total) for progress reporting.
 
     Returns:
         The final combined summary.
     """
     progress = progress or _noop_progress
-    chunks = chunk_text(text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model)
+    chunks = chunk_text(
+        text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model
+    )
 
     if len(chunks) == 0:
         return ""
     if len(chunks) == 1:
         progress("map", 1, 1)
         prompt = render_prompt(prompt_template, chunks[0])
-        return client.complete(prompt, max_tokens=max_output_tokens)
+        return client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
 
     # Map: summarize each chunk
     chunk_summaries = []
@@ -117,13 +127,13 @@ def map_reduce(
     for i, chunk in enumerate(chunks):
         progress("map", i + 1, total)
         prompt = render_prompt(prompt_template, chunk)
-        summary = client.complete(prompt, max_tokens=max_output_tokens)
+        summary = client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
         chunk_summaries.append(summary)
 
     # Reduce: combine all summaries
     progress("reduce", 1, 1)
     reduce_prompt = render_reduce_prompt(reduce_template, chunk_summaries)
-    return client.complete(reduce_prompt, max_tokens=max_output_tokens)
+    return client.complete(reduce_prompt, max_tokens=max_output_tokens, stream=stream)
 
 
 def refine(
@@ -134,6 +144,7 @@ def refine(
     overlap_tokens: int = 0,
     model: str = "gpt-4",
     max_output_tokens: int = 8192,
+    stream: bool = False,
     progress: ProgressCallback = None,
 ) -> str:
     """Summarize text using the iterative refinement algorithm.
@@ -152,27 +163,32 @@ def refine(
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
         max_output_tokens: Maximum tokens for LLM response per call.
+        stream: Pass each API call as a streaming request; see map_reduce.
         progress: Optional callback(phase, current, total) for progress reporting.
 
     Returns:
         The refined summary.
     """
     progress = progress or _noop_progress
-    chunks = chunk_text(text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model)
+    chunks = chunk_text(
+        text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model
+    )
 
     if len(chunks) == 0:
         return ""
     if len(chunks) == 1:
         progress("refine", 1, 1)
         prompt = render_prompt(prompt_template, chunks[0])
-        return client.complete(prompt, max_tokens=max_output_tokens)
+        return client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
 
     total = len(chunks)
 
     # First chunk: simple summary
     progress("refine", 1, total)
     first_prompt = render_prompt(prompt_template, chunks[0])
-    running_summary = client.complete(first_prompt, max_tokens=max_output_tokens)
+    running_summary = client.complete(
+        first_prompt, max_tokens=max_output_tokens, stream=stream
+    )
 
     # Subsequent chunks: refine the running summary
     # Detect JSON output and reinforce the schema to prevent field loss
@@ -181,7 +197,9 @@ def refine(
     for i, chunk in enumerate(chunks[1:], start=2):
         progress("refine", i, total)
         prompt = fill_refine_instruction(refine_instruction, running_summary, chunk)
-        running_summary = client.complete(prompt, max_tokens=max_output_tokens)
+        running_summary = client.complete(
+            prompt, max_tokens=max_output_tokens, stream=stream
+        )
 
     return running_summary
 
@@ -195,6 +213,7 @@ def hierarchical(
     overlap_tokens: int = 0,
     model: str = "gpt-4",
     max_output_tokens: int = 8192,
+    stream: bool = False,
     progress: ProgressCallback = None,
     _max_reduce_tokens: int = 2000,
 ) -> str:
@@ -213,6 +232,7 @@ def hierarchical(
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
         max_output_tokens: Maximum tokens for LLM response per call.
+        stream: Pass each API call as a streaming request; see map_reduce.
         progress: Optional callback(phase, current, total) for progress reporting.
         _max_reduce_tokens: Token limit for the reduce step (internal recursion).
 
@@ -220,14 +240,16 @@ def hierarchical(
         The final hierarchical summary.
     """
     progress = progress or _noop_progress
-    chunks = chunk_text(text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model)
+    chunks = chunk_text(
+        text, max_tokens=max_tokens, overlap_tokens=overlap_tokens, model=model
+    )
 
     if len(chunks) == 0:
         return ""
     if len(chunks) == 1:
         progress("map", 1, 1)
         prompt = render_prompt(prompt_template, chunks[0])
-        return client.complete(prompt, max_tokens=max_output_tokens)
+        return client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
 
     # Map: summarize each chunk
     chunk_summaries = []
@@ -235,7 +257,7 @@ def hierarchical(
     for i, chunk in enumerate(chunks):
         progress("map", i + 1, total)
         prompt = render_prompt(prompt_template, chunk)
-        summary = client.complete(prompt, max_tokens=max_output_tokens)
+        summary = client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
         chunk_summaries.append(summary)
 
     # Reduce: combine summaries, recursively if needed
@@ -247,6 +269,7 @@ def hierarchical(
         max_tokens=_max_reduce_tokens,
         model=model,
         max_output_tokens=max_output_tokens,
+        stream=stream,
     )
 
 
@@ -257,6 +280,7 @@ def _recursive_reduce(
     max_tokens: int,
     model: str = "gpt-4",
     max_output_tokens: int = 8192,
+    stream: bool = False,
 ) -> str:
     """Recursively reduce summaries until they fit in a single LLM call.
 
@@ -269,7 +293,9 @@ def _recursive_reduce(
     if count_tokens(combined, model) <= max_tokens:
         # Fits in one call — do the final reduce
         reduce_prompt = render_reduce_prompt(reduce_template, summaries)
-        return client.complete(reduce_prompt, max_tokens=max_output_tokens)
+        return client.complete(
+            reduce_prompt, max_tokens=max_output_tokens, stream=stream
+        )
 
     # Too large — chunk the summaries and reduce each group
     summary_chunks = chunk_text(combined, max_tokens=max_tokens, model=model)
@@ -278,13 +304,15 @@ def _recursive_reduce(
         # Edge case: a single summary chunk that's still too large
         # Just send it — the LLM may truncate, but we can't split further
         reduce_prompt = render_reduce_prompt(reduce_template, summaries)
-        return client.complete(reduce_prompt, max_tokens=max_output_tokens)
+        return client.complete(
+            reduce_prompt, max_tokens=max_output_tokens, stream=stream
+        )
 
     # Reduce each group
     reduced_summaries = []
     for chunk in summary_chunks:
         prompt = render_reduce_prompt(reduce_template, [chunk])
-        reduced = client.complete(prompt, max_tokens=max_output_tokens)
+        reduced = client.complete(prompt, max_tokens=max_output_tokens, stream=stream)
         reduced_summaries.append(reduced)
 
     # Recurse on the reduced summaries
@@ -295,4 +323,5 @@ def _recursive_reduce(
         max_tokens=max_tokens,
         model=model,
         max_output_tokens=max_output_tokens,
+        stream=stream,
     )
