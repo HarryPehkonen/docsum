@@ -4,7 +4,27 @@
   "revision": "951608c2675a2f5c2d0b59d9c19c632d23a043af",
   "recorded_at": "2026-09-20",
   "record_kind": "retroactive",
-  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks and the gate script are byte-identical to the kit's: the gate script's one divergence was a kit fix that landed after the copy, and it was synced in on 2026-09-20, so nothing here is adapted by hand any more. The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit. **2026-09-20, card t_0cc793fb:** `revision` moved to 951608c because `scripts/gate.sh` is a byte copy again — taken wholesale from the kit, which gained the `kit probes` step (\"a fix that must propagate ships a probe\"). It SKIPs here until this repo carries a probe of its own; the point of copying it whole is that the gate stays one file and cannot drift into a fork by accident.",
+  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks and the gate script are byte-identical to the kit's: the gate script's one divergence was a kit fix that landed after the copy, and it was synced in on 2026-09-20, so nothing here is adapted by hand any more. The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit. **2026-09-20, card t_0cc793fb:** `revision` moved to 951608c because `scripts/gate.sh` is a byte copy again — taken wholesale from the kit, which gained the `kit probes` step (\"a fix that must propagate ships a probe\"). It SKIPs here until this repo carries a probe of its own; the point of copying it whole is that the gate stays one file and cannot drift into a fork by accident. **2026-09-20, card t_fb62d8fa:** the record gained the kit's per-fix lists (docs/KIT-REVISION-CONVENTION.md, 'Exact file shape'), so what this copy has and has not taken from the kit is machine-readable instead of prose. `declined_fixes` records all three of the kit's probes as NOT APPLICABLE here: they are stages or guards in the kit's templates/cpp/ci.sh, and this repo's gate is the python one, so there is no second C++ configuration to build and nothing to port -- running them against this gate is what the checker reports as FAILING, and that is the whole reason the record says why. No probe is carried yet, and the gate's kit-probes step SKIPs by design ('carries no probe yet' is not the same statement as 'is behind'). **`revision` and every `kit_sha256` are UNCHANGED by this commit**: nothing here came from the kit, and being behind the kit is not a failure -- the check that called it one was measuring whether the kit had moved.",
+  "declined_fixes": [
+    {
+      "name": "tidy-baseline",
+      "from_revision": "a6ad2ea6951c66eb5b7c2eea8757ab8d3311174e",
+      "probe": "probes/tidy-baseline.sh",
+      "why": "not applicable: tidy-baseline guards the kit's templates/cpp/ci.sh and this repo's gate is the python one, so there is no C++ gate here for it to guard -- no stage to port and no decline to weigh."
+    },
+    {
+      "name": "gate-stage-guards",
+      "from_revision": "951608c2675a2f5c2d0b59d9c19c632d23a043af",
+      "probe": "probes/gate-stage-guards.sh",
+      "why": "not applicable: gate-stage-guards guards the kit's templates/cpp/ci.sh and this repo's gate is the python one, so there is no C++ gate here for it to guard -- no stage to port and no decline to weigh."
+    },
+    {
+      "name": "optimized-build-stage",
+      "from_revision": "d531a110184125ed108c3eabc36834bb803404bb",
+      "probe": "probes/optimized-stage.sh",
+      "why": "not applicable: optimized-build-stage guards the kit's templates/cpp/ci.sh and this repo's gate is the python one, so there is no C++ gate here for it to guard -- no stage to port and no decline to weigh."
+    }
+  ],
   "files": [
     {
       "repo_path": "scripts/gate.sh",
