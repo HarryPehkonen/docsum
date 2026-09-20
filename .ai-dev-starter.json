@@ -1,0 +1,48 @@
+{
+  "kit": "AI-DEV-STARTER",
+  "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
+  "revision": "fb387f2044989f76bb2fe234cef39e85ac050328",
+  "recorded_at": "2026-09-20",
+  "record_kind": "retroactive",
+  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks are byte-identical to the kit's; the gate script's one divergence is a kit fix that landed after the copy, not a local decision (see its adapted_why). The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit.",
+  "files": [
+    {
+      "repo_path": "scripts/gate.sh",
+      "kit_path": "templates/python/gate.sh",
+      "repo_sha256": "cdab5e4cd9c380c25088d79ca727e5b19dd92331a77272615cb5748d07028829",
+      "kit_sha256": "a4c9df4c0457aa46b1386759183a83737f12ca803eac52ee45ebe6bbbc368a7f",
+      "adapted": true,
+      "adapted_why": "Not a local decision, and nothing in it was written for docsum: the copy is byte-identical to the kit's python gate as it stood BEFORE card t_561f6857 (verified 2026-09-20 by reverse-applying that card's own recorded patch to the kit file — 25606 bytes, same sha256), so the only divergence from the current kit is that later tool_env/py_env fix for a src-layout unpackaged repo. That fix is inert here (docsum keeps its package at the repo root, which `python -m` already reaches), which is why the copy was left alone rather than synced mid-record; a sync should bring it level with the kit and then set adapted to false."
+    },
+    {
+      "repo_path": ".githooks/pre-commit",
+      "kit_path": "templates/hooks/pre-commit",
+      "repo_sha256": "e304ddcb48e216029c8e77402d927695dae4895532f6bf12d1ecb54604b652d8",
+      "kit_sha256": "e304ddcb48e216029c8e77402d927695dae4895532f6bf12d1ecb54604b652d8",
+      "adapted": false
+    },
+    {
+      "repo_path": ".githooks/pre-push",
+      "kit_path": "templates/hooks/pre-push",
+      "repo_sha256": "2c82ed7099fc5687795264521be327fdda23e8c02eadd3ac12bd9667186c0d18",
+      "kit_sha256": "2c82ed7099fc5687795264521be327fdda23e8c02eadd3ac12bd9667186c0d18",
+      "adapted": false
+    },
+    {
+      "repo_path": "INCIDENTS.md",
+      "kit_path": "INCIDENTS.md",
+      "repo_sha256": "ca2019ef1a200a90dd3ba9a60863c4529b608a897cfc4b92894d5f465bd4027c",
+      "kit_sha256": "28928d4081780f7fd1432112eba4261e32e5a8985964378285b944f9576d88ff",
+      "adapted": true,
+      "adapted_why": "Seeded from the kit's rule block on 2026-09-19 and then grown to 278 lines of this repo's own history (the kit's file is 159): per-repo incident log, so a sync must never overwrite it with the kit's entries."
+    },
+    {
+      "repo_path": "../gate-evidence/docsum/contract-doc-final.md",
+      "kit_path": "templates/CLAUDE.md.template",
+      "repo_sha256": "d62450b8e73ba4f90b197dad22aac284441f6c20c9d477bef4db867d9cbec057",
+      "kit_sha256": "615ad65a51eb5b70a59882d261eeacc1510cbd7c8cd59d730bba945ad19fa3da",
+      "adapted": true,
+      "adapted_why": "Filled in for this repo, and staged OUTSIDE the repo tree rather than at CLAUDE.md: CLAUDE.md is a protected agent-instruction name here, and every unattended attempt to create it (t_8af07965, t_90ed3a35, and the TNGPlaylists equivalent) was refused by the guard. The path above is relative to this repo root and resolves to /home/harri/hermes-workspace/gate-evidence/docsum/contract-doc-final.md (the path the convention calls gate-evidence/docsum/...); `adapted_why` for other repos is a local copy, this one is a pointer until a human installs it. Installing it counts as a move: the same commit must set repo_path to CLAUDE.md and re-record repo_sha256."
+    }
+  ]
+}
