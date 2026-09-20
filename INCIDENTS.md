@@ -189,7 +189,7 @@ be able to tell a decision from an oversight. Status as of 2026-09-20 (card t_90
 - **Untracked clutter: 398 → 0 files.** The batch scratch moved to
   `~/hermes-workspace/docsum-scratch/`, `work_*/` is ignored, and `git ls-files --others
   --exclude-standard` returns nothing in a clean tree (incident above).
-- **The format debt shrank from 14 files to 11.** `docsum/cli.py`, `docsum/algorithms.py`,
+- **The format debt shrank from 14 files to 10.** `docsum/cli.py`, `docsum/algorithms.py`,
   `docsum/step_processor.py` and `tests/test_streaming.py` are now formatted. This is not
   a free win: the gate's format stage requires every file a branch TOUCHES to be
   formatted, so editing a drifting file costs its whole-file reformat in that commit.
@@ -208,7 +208,7 @@ be able to tell a decision from an oversight. Status as of 2026-09-20 (card t_90
   card was told "do not mass-reformat", so the seven are deferred as ONE decision (format
   the tree, or leave it) instead of being paid in arbitrary fragments. The two commands
   are in the comment above that block in `ruff.toml`.
-- **11 files would still be reformatted** (`uv run --with ruff ruff format --check .`).
+- **10 files would still be reformatted** (`uv run --with ruff ruff format --check .`).
   The gate checks only the files a branch touches, so this debt costs nothing until
   someone edits one of them — and then it costs that file's reformat, in that commit.
   `tests/test_json_merge.py` is in the list and has no lint finding at all.
