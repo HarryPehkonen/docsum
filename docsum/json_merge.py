@@ -15,7 +15,6 @@ Merge rules:
 """
 
 import json
-import re
 
 # Sort position for events with no usable "order" field — they go last.
 _NO_ORDER = 9999
@@ -215,7 +214,9 @@ def merge_json_objects(*objects: dict) -> dict:
 
         # Unknown object fields: merge recursively
         elif all(isinstance(v, dict) for v in values):
-            merged[key] = merge_json_objects(*values)
+            merged[key] = merge_json_objects(
+                *[v for v in values if isinstance(v, dict)]
+            )
 
         # Unknown scalar fields: keep the most detailed value, as-is
         else:

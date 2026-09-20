@@ -11,7 +11,7 @@ Supports:
   model use its default maximum — may help or hurt with timeouts)
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 from openai import OpenAI
 
@@ -63,8 +63,10 @@ class LLMClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        # Build kwargs — omit max_tokens if None
-        kwargs = {
+        # Build kwargs — omit max_tokens if None. Annotated as dict[str, Any]
+        # because the values are deliberately heterogeneous (str, list, float,
+        # int) and the SDK's overloads need to see one call shape per branch.
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
