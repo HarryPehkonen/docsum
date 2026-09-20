@@ -33,7 +33,10 @@
 #                     the requirements into it, and run the SUITE from that venv. That
 #                     proves the declared dependency list is complete and that the suite
 #                     does not depend on this machine's stale dev venv. Identity = the
-#                     repo's declared VERSION file <-> the version the code reports.
+#                     repo's declared VERSION file <-> the version the code reports. In this
+#                     branch the tree IS the artifact, so every tool runs with the tree's own
+#                     layout on sys.path (see tool_env) — a src/ layout is otherwise not
+#                     importable by the tests.
 #
 # A repo with neither file cannot be reproduced on a clean machine at all, so that is a
 # FAIL, not a skip.
@@ -122,10 +125,13 @@ require_tool() {  # require_tool <tool> <stage>
 }
 
 run_tool() {  # run_tool <tool> <args...>
+    # Everything goes through tool_env (defined below, next to py_env): in an unpackaged repo
+    # the tool must see the sys.path the tree declares. Its comment names the measured failure
+    # this prevents. Outside that branch tool_env is a plain exec.
     local tool="$1"; shift
     case "$(tool_mode "$tool")" in
-        venv) ".venv/bin/$tool" "$@" ;;
-        path) "$tool" "$@" ;;
+        venv) tool_env ".venv/bin/$tool" "$@" ;;
+        path) tool_env "$tool" "$@" ;;
         uv)
             case "$tool" in
                 # --with keeps the tool out of the project's dependency list; `python -m`
@@ -134,15 +140,15 @@ run_tool() {  # run_tool <tool> <args...>
                 # is what makes this usable in a repo that has no pyproject for uv to sync.
                 pytest)
                     if [ -n "$UV_WITH_REQUIREMENTS" ]; then
-                        uv run --quiet --with pytest --with-requirements "$UV_WITH_REQUIREMENTS" python -m pytest "$@"
+                        tool_env uv run --quiet --with pytest --with-requirements "$UV_WITH_REQUIREMENTS" python -m pytest "$@"
                     else
-                        uv run --quiet --with pytest python -m pytest "$@"
+                        tool_env uv run --quiet --with pytest python -m pytest "$@"
                     fi ;;
                 # pytest comes along on purpose: test files import it, and mypy would
                 # otherwise report import-not-found for every one of them.
-                mypy) uv run --quiet --with mypy --with pytest python -m mypy "$@" ;;
-                ruff) uv run --quiet --with ruff ruff "$@" ;;
-                *) uv tool run --quiet "$tool" "$@" ;;
+                mypy) tool_env uv run --quiet --with mypy --with pytest python -m mypy "$@" ;;
+                ruff) tool_env uv run --quiet --with ruff ruff "$@" ;;
+                *) tool_env uv tool run --quiet "$tool" "$@" ;;
             esac ;;
         *) return 127 ;;
     esac
@@ -225,6 +231,28 @@ py_env() {
         env -u PYTHONPATH PYTHONPATH="$PY_IMPORT_PATH" "$@"
     else
         env -u PYTHONPATH "$@"
+    fi
+}
+
+# Every tool the gate runs goes through this. An UNPACKAGED repo has no packaging metadata for
+# a runner to install, so the tree IS the artifact and the tools must see the sys.path the tree
+# declares — py_env above. MEASURED, 2026-09-20: a src-layout unpackaged repo (package under
+# src/, VERSION + requirements.txt at the root, no pyproject) died in the tests stage with
+# `ModuleNotFoundError: No module named '<pkg>'`, because pytest's rootdir insertion reaches
+# only the tests directory and `python -m pytest` reaches only the repo root, while the
+# clean-environment stage — which does use py_env — passed the same suite. A flat layout hides
+# it (the package sits on the repo root, which `python -m` already has on sys.path), which is
+# why docsum never showed it.
+#
+# The packaged branch is deliberately left exactly as it was: its tests run in the environment
+# the repo configures (uv syncs the project itself, so `uv run` has it installed), and
+# PY_IMPORT_PATH is emptied before the smoke import so the identity check asks the installed
+# wheel rather than the tree.
+tool_env() {  # tool_env <command...>
+    if [ "$BRANCH" = "unpackaged" ]; then
+        py_env "$@"
+    else
+        "$@"
     fi
 }
 

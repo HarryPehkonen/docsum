@@ -4,15 +4,14 @@
   "revision": "fb387f2044989f76bb2fe234cef39e85ac050328",
   "recorded_at": "2026-09-20",
   "record_kind": "retroactive",
-  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks are byte-identical to the kit's; the gate script's one divergence is a kit fix that landed after the copy, not a local decision (see its adapted_why). The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit.",
+  "record_note": "Wired by hand on 2026-09-19 (commit 61dac7f, 'process: plunk in the gate (ruff + pytest + fresh-venv run + version invariant)'), before the kit existed as a git repo — so `revision` is the kit's FIRST PUBLISHED commit, not the exact copy point; do not read it as the tree this repo was copied from. The hooks and the gate script are byte-identical to the kit's: the gate script's one divergence was a kit fix that landed after the copy, and it was synced in on 2026-09-20, so nothing here is adapted by hand any more. The kit's C++ and Deno artifacts (tools/ci.sh, .ci.env.example, templates/deno/gate.sh, .gitignore) never applied to this Python repo and are not listed; ruff.toml, mypy.ini, pytest.ini and .gitignore here are this repo's own files, not kit copies. Rule that keeps this file true: any commit that edits a copied artifact must update that artifact's repo_sha256 in the same commit.",
   "files": [
     {
       "repo_path": "scripts/gate.sh",
       "kit_path": "templates/python/gate.sh",
-      "repo_sha256": "cdab5e4cd9c380c25088d79ca727e5b19dd92331a77272615cb5748d07028829",
+      "repo_sha256": "a4c9df4c0457aa46b1386759183a83737f12ca803eac52ee45ebe6bbbc368a7f",
       "kit_sha256": "a4c9df4c0457aa46b1386759183a83737f12ca803eac52ee45ebe6bbbc368a7f",
-      "adapted": true,
-      "adapted_why": "Not a local decision, and nothing in it was written for docsum: the copy is byte-identical to the kit's python gate as it stood BEFORE card t_561f6857 (verified 2026-09-20 by reverse-applying that card's own recorded patch to the kit file — 25606 bytes, same sha256), so the only divergence from the current kit is that later tool_env/py_env fix for a src-layout unpackaged repo. That fix is inert here (docsum keeps its package at the repo root, which `python -m` already reaches), which is why the copy was left alone rather than synced mid-record; a sync should bring it level with the kit and then set adapted to false."
+      "adapted": false
     },
     {
       "repo_path": ".githooks/pre-commit",
