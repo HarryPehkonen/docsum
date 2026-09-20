@@ -10,16 +10,19 @@ Each step is a single CLI invocation — no long-running process.
 State persists as JSON between calls.
 """
 
-from typing import Optional
-
-from docsum.chunker import chunk_text, count_tokens
+from docsum.chunker import chunk_text
 from docsum.llm_client import LLMClient
 from docsum.prompts import render_prompt, render_reduce_prompt, BUILTIN_PROMPTS
 from docsum.step_state import StepState, load_state, save_state
-from docsum.algorithms import _recursive_reduce, fill_refine_instruction, refine_instruction_for
+from docsum.algorithms import (
+    _recursive_reduce,
+    fill_refine_instruction,
+    refine_instruction_for,
+)
 
 
 # --- output cleanup --------------------------------------------------------
+
 
 def _clean_output(text: str) -> str:
     """Clean up LLM output: strip whitespace, markdown fences, and extra braces.
@@ -54,6 +57,7 @@ def _clean_output(text: str) -> str:
 
 
 # --- prepare ---------------------------------------------------------------
+
 
 def prepare(
     text: str,
@@ -106,7 +110,10 @@ def prepare(
 
 # --- step ------------------------------------------------------------------
 
-def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retries: int = 0) -> dict:
+
+def step(
+    state_path: str, client: LLMClient, retry_backoff: float = 0, max_retries: int = 0
+) -> dict:
     """Process the next unprocessed chunk and save the result.
 
     Args:
@@ -160,8 +167,7 @@ def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retri
     # Determine max_tokens for the API call
     api_max_tokens = None if state.no_max_output_tokens else state.max_output_tokens
 
-    # Retry loop
-    last_error = None
+    # Retry loop: the last attempt re-raises, so the exception needs no local.
     attempts = max_retries + 1  # always at least 1 attempt
     for attempt in range(attempts):
         try:
@@ -171,8 +177,7 @@ def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retri
                 stream=state.stream,
             )
             break
-        except Exception as e:
-            last_error = e
+        except Exception:
             if attempt < attempts - 1:
                 if retry_backoff > 0:
                     time.sleep(retry_backoff)
@@ -193,6 +198,7 @@ def step(state_path: str, client: LLMClient, retry_backoff: float = 0, max_retri
 
 
 # --- finalize --------------------------------------------------------------
+
 
 def finalize(state_path: str, client: LLMClient) -> dict:
     """Combine all chunk results into the final output.
@@ -219,7 +225,11 @@ def finalize(state_path: str, client: LLMClient) -> dict:
 
     if state.mode == "refine":
         # Refine: running summary is the final result
-        final = state.running_summary or state.get_results()[-1] if state.get_results() else ""
+        final = (
+            state.running_summary or state.get_results()[-1]
+            if state.get_results()
+            else ""
+        )
         final = _clean_output(final)
         state.final_result = final
         save_state(state)
@@ -234,6 +244,7 @@ def finalize(state_path: str, client: LLMClient) -> dict:
 
     # Check if this is a JSON reduce — use programmatic merge (no LLM call)
     from docsum.json_merge import merge_json_chunks
+
     json_reduce_template = BUILTIN_PROMPTS.get("json_reduce", "")
     if state.reduce_template == json_reduce_template and json_reduce_template:
         # Programmatic merge: fast, free, deterministic, never times out
@@ -266,6 +277,7 @@ def finalize(state_path: str, client: LLMClient) -> dict:
 
 
 # --- get_status ------------------------------------------------------------
+
 
 def get_status(state_path: str) -> dict:
     """Report current progress without processing any chunks.

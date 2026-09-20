@@ -5,25 +5,37 @@
 # 1. Ruff reads the NEAREST config walking up the directory tree. Without one in the repo,
 #    whatever sits above the checkout decides what is checked — so the same tree lints
 #    differently on the machine you wrote it on and on a clean copy somewhere else.
-# 2. This tree arrived with 58 pre-existing findings (listed in INCIDENTS.md under "Known
-#    lint debt"). The three rules they belong to are named below, one by one, so turning
-#    them back on is a visible edit rather than a silent default change.
+# 2. This tree arrived with pre-existing findings under ruff's no-config default. The rule
+#    set and the exceptions are written down here, one at a time, so turning a rule back on
+#    is a visible edit rather than a silent default change.
 #
-# The rule set is ruff's own default (E4 imports, E7 statements, E9 syntax, F pyflakes)
-# with the three rules this tree currently violates switched off. Everything else stays on.
+# The rule set is ruff's historical core — E4 imports, E7 statements, E9 syntax, F pyflakes
+# — stated explicitly so the verdict does not depend on which ruff release the gate fetched.
 line-length = 88
 
 [lint]
 select = ["E4", "E7", "E9", "F"]
-ignore = [
-    # 25 findings across the tree: 3 in docsum/ (an unused `re`, an unused `typing.Optional`,
-    # an unused `count_tokens`), the rest in tests/. Pre-existing.
-    "F401",
-    # 7 findings. Six are unused locals in tests/. The seventh is docsum/cli.py:264
-    # (`run_stream = args.stream`, never used) — reported as a possible real bug in
-    # INCIDENTS.md, not cleaned up by the gate card because fixing it changes behaviour.
-    "F841",
-    # 2 findings, both in tests/test_opus5_bugs.py, where a name is re-imported inside a
-    # test body on purpose (the test asserts on the re-imported binding).
-    "F811",
-]
+
+# The shipped code (`docsum/`) has NO exceptions: `ruff check docsum` is clean under every
+# selected rule. The findings below are pre-existing unused imports and locals in seven
+# TEST files, and each one is ignored per file rather than globally — a new test file gets
+# the full rule set, and the day these seven are cleaned the block is deleted.
+#
+# Why they are still there: every one of these files also carries formatting drift, and the
+# gate's format stage requires a file it touches to be formatted. So removing a one-line
+# unused import costs a whole-file reformat — measured at 670 lines across the seven, which
+# the 2026-09-20 card deliberately did not spend ("do not mass-reformat"). The exact
+# follow-up, when the tree gets formatted on purpose:
+#
+#     uv run --with ruff ruff check --select F401,F841,F811 --fix tests/
+#     uv run --with ruff ruff format tests/
+#     # then delete this block
+#
+[lint.per-file-ignores]
+"tests/test_opus5_bugs.py" = ["F401", "F841", "F811"]  # 13 findings, 29 lines of drift
+"tests/test_fixes.py" = ["F401", "F841"]               # 5 findings, 166 lines of drift
+"tests/test_algorithms.py" = ["F401"]                  # 2 findings, 30 lines of drift
+"tests/test_step_processor.py" = ["F401"]              # 1 finding, 78 lines of drift
+"tests/test_integration.py" = ["F401"]                 # 1 finding, 107 lines of drift
+"tests/test_cli.py" = ["F401"]                         # 1 finding, 252 lines of drift
+"tests/test_chunker.py" = ["F401"]                     # 1 finding, 8 lines of drift

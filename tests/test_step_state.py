@@ -8,7 +8,6 @@ so a long document can be processed one chunk at a time across
 multiple invocations of the CLI.
 """
 
-import json
 import os
 import tempfile
 

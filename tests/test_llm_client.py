@@ -1,8 +1,6 @@
 """Tests for the LLM client that calls OpenAI-compatible endpoints."""
 
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from docsum.llm_client import LLMClient
 
