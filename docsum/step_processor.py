@@ -207,6 +207,10 @@ def finalize(state_path: str, client: LLMClient) -> dict:
     if needed for hierarchical).
     For refine: the running summary IS the final result.
 
+    The flags recorded at `prepare` time are honoured here too: the reduce call
+    is made with `stream=state.stream`, and `max_tokens` is omitted when the
+    state recorded `no_max_output_tokens`.
+
     Returns:
         Dictionary with: result, is_complete
     """
@@ -254,6 +258,11 @@ def finalize(state_path: str, client: LLMClient) -> dict:
         save_state(state)
         return {"result": final, "is_complete": True}
 
+    # The reduce is the longest single request in the flow, so it gets the same
+    # two flag decisions the chunk calls in step() get: a recorded --stream and a
+    # recorded --no-max-output-tokens must both survive to the final call.
+    api_max_tokens = None if state.no_max_output_tokens else state.max_output_tokens
+
     if state.mode == "hierarchical":
         # Hierarchical: recursively reduce if needed
         results = state.get_results()
@@ -263,12 +272,15 @@ def finalize(state_path: str, client: LLMClient) -> dict:
             reduce_template=state.reduce_template,
             max_tokens=state.max_tokens,
             model=state.tokenizer_model,
-            max_output_tokens=state.max_output_tokens,
+            max_output_tokens=api_max_tokens,
+            stream=state.stream,
         )
     else:
         # Map-reduce: single reduce call
         reduce_prompt = render_reduce_prompt(state.reduce_template, state.get_results())
-        final = client.complete(reduce_prompt, max_tokens=state.max_output_tokens)
+        final = client.complete(
+            reduce_prompt, max_tokens=api_max_tokens, stream=state.stream
+        )
 
     final = _clean_output(final)
     state.final_result = final

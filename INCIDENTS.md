@@ -96,12 +96,60 @@ Check added:       FIXED (2026-09-20, card t_90ed3a35) by implementing the flag 
                    `--help` text from one `_STREAM_HELP` constant, so they cannot
                    drift apart again. Measured live against the Hermes proxy:
                    `--stream` and no-flag runs both return a summary.
+                   Same defect class, three places the fix above did not reach —
+                   closed 2026-09-20 by card t_01e401ae, after a review measured them:
+                     (a) `finalize` dropped the recorded `--stream`: `step()` passed
+                         `stream=state.stream` but `step_processor.py:271`
+                         (`client.complete(reduce_prompt, max_tokens=...)`) passed none
+                         and `:260` (`_recursive_reduce(...)`) passed none. Measured
+                         over 40 chunks: map-reduce 40/40 chunk calls stream=True and
+                         the FINALIZE call with no `stream` kwarg at all; hierarchical
+                         40/40 and 3/3 finalize calls `stream=False`. That reduce is
+                         the longest single request in the flow — the most 524-prone
+                         call there is.
+                     (b) `--no-max-output-tokens` was dead in `run`: `cli.py` set
+                         `run_max_tokens = None` for the flag and then passed
+                         `max_output_tokens=run_max_tokens if run_max_tokens is not None
+                         else 8192` at all three call sites, so the `else 8192` flattened
+                         the `None` straight back and the algorithms could never ask for
+                         omission (measured: 21 calls, one per chunk, every one
+                         `max_tokens: 8192` — with the flag, and even with
+                         `--max-output-tokens 100` alongside it, which it silently
+                         discarded).
+                     (c) `finalize` ignored `no_max_output_tokens` as well: `:266`/`:271`
+                         used `state.max_output_tokens` and never
+                         `state.no_max_output_tokens`, so a `prepare --no-max-output-tokens`
+                         run omitted the field on every chunk call and then sent it on
+                         the final reduce.
+                   The fix keeps `None` meaningful end to end: the four algorithm
+                   signatures take `max_output_tokens: int | None = 8192`, `_cmd_run`
+                   passes `run_max_tokens` untouched, and `finalize` computes one
+                   `api_max_tokens = None if state.no_max_output_tokens else
+                   state.max_output_tokens` and passes it with `stream=state.stream` to
+                   both reduce branches. The checks are new behavioural tests in
+                   `tests/test_streaming.py`: `TestStepPathHonoursTheRecordedFlags`
+                   drives `prepare -> step* -> finalize` with a stubbed client and
+                   asserts every call (the finalize reduce included) carries
+                   `stream=True` when the state recorded it — and that none does
+                   without it, or for refine — plus that `max_tokens` is `None` under
+                   `--no-max-output-tokens` and the recorded number otherwise;
+                   `TestRunPathNoMaxOutputTokens` pins the run path (default 8192,
+                   explicit value honoured, omission with the flag, and the flag beating
+                   an explicit value), parametrized over all three modes because each
+                   mode had its own flattened call site. All of them fail on the
+                   pre-fix code.
+                   Both subcommands' `--no-max-output-tokens` help now comes from one
+                   `_NO_MAX_OUTPUT_TOKENS_HELP` constant, the same way `--stream` does.
 Why it must stay:  An accepted-and-ignored flag is the worst kind of interface lie: the
                    caller believes the connection is being kept alive against a gateway
                    timeout while the request is exactly as interruptible as before. The
-                   test is what stops the wiring from being dropped again by a refactor
-                   — without it, "the algorithms take no stream parameter" is invisible
-                   in a green suite, which is how it survived the first time.
+                   tests are what stop the wiring from being dropped again by a refactor
+                   — without them, "the algorithms take no stream parameter" is invisible
+                   in a green suite, which is how it survived the first time; and the
+                   second time the surviving half was the one call the flag exists for.
+                   The `int | None` signatures are load-bearing too: restoring a plain
+                   `int` default re-creates defect (b), because `None` is the only value
+                   that says "omit the field".
 
 ---
 

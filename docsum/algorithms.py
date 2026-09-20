@@ -82,7 +82,7 @@ def map_reduce(
     max_tokens: int = 2000,
     overlap_tokens: int = 0,
     model: str = "gpt-4",
-    max_output_tokens: int = 8192,
+    max_output_tokens: int | None = 8192,
     stream: bool = False,
     progress: ProgressCallback = None,
 ) -> str:
@@ -100,7 +100,8 @@ def map_reduce(
         max_tokens: Maximum tokens per chunk.
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
-        max_output_tokens: Maximum tokens for LLM response per call.
+        max_output_tokens: Maximum tokens for LLM response per call. None omits
+            the field from the API call entirely (the model's own default is used).
         stream: Pass each API call as a streaming request. The text is still
             collected and returned whole — the point is that the connection stays
             active while the model generates, which is what avoids gateway 524s.
@@ -143,7 +144,7 @@ def refine(
     max_tokens: int = 2000,
     overlap_tokens: int = 0,
     model: str = "gpt-4",
-    max_output_tokens: int = 8192,
+    max_output_tokens: int | None = 8192,
     stream: bool = False,
     progress: ProgressCallback = None,
 ) -> str:
@@ -162,7 +163,8 @@ def refine(
         max_tokens: Maximum tokens per chunk.
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
-        max_output_tokens: Maximum tokens for LLM response per call.
+        max_output_tokens: Maximum tokens for LLM response per call. None omits
+            the field from the API call entirely (the model's own default is used).
         stream: Pass each API call as a streaming request; see map_reduce.
         progress: Optional callback(phase, current, total) for progress reporting.
 
@@ -212,7 +214,7 @@ def hierarchical(
     max_tokens: int = 2000,
     overlap_tokens: int = 0,
     model: str = "gpt-4",
-    max_output_tokens: int = 8192,
+    max_output_tokens: int | None = 8192,
     stream: bool = False,
     progress: ProgressCallback = None,
     _max_reduce_tokens: int = 2000,
@@ -231,7 +233,8 @@ def hierarchical(
         max_tokens: Maximum tokens per chunk.
         overlap_tokens: Token overlap between chunks.
         model: Model name for tokenization.
-        max_output_tokens: Maximum tokens for LLM response per call.
+        max_output_tokens: Maximum tokens for LLM response per call. None omits
+            the field from the API call entirely (the model's own default is used).
         stream: Pass each API call as a streaming request; see map_reduce.
         progress: Optional callback(phase, current, total) for progress reporting.
         _max_reduce_tokens: Token limit for the reduce step (internal recursion).
@@ -279,13 +282,17 @@ def _recursive_reduce(
     reduce_template: str,
     max_tokens: int,
     model: str = "gpt-4",
-    max_output_tokens: int = 8192,
+    max_output_tokens: int | None = 8192,
     stream: bool = False,
 ) -> str:
     """Recursively reduce summaries until they fit in a single LLM call.
 
     If the combined summaries fit within max_tokens, do a single reduce call.
     Otherwise, chunk the summaries, reduce each group, and recurse.
+
+    `stream` and `max_output_tokens` are forwarded to every call, recursion
+    included — a reduce that drops them is the longest unstreamed request in the
+    flow (see the finalize regression in INCIDENTS.md, 2026-09-20).
     """
     # Combine all summaries with separators
     combined = "\n\n---\n\n".join(summaries)

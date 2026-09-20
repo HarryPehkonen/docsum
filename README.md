@@ -63,7 +63,8 @@ Prompt:
 Output:
   --output, -o FILE       Write to file (default: stdout)
   --max-output-tokens N   Max tokens per LLM response (default: 8192)
-  --no-max-output-tokens  Omit max_tokens from the API call (use the model's default)
+  --no-max-output-tokens  Omit max_tokens from the API call (use the model's default).
+                          This beats --max-output-tokens: with both, no max_tokens is sent.
   --stream                Stream each API call — keeps the connection active while
                           the model generates, which avoids gateway 524 timeouts on
                           long chunks. The reply is still assembled and returned whole.
@@ -73,9 +74,14 @@ Other:
   --tokenizer-model MODEL  Model for token counting (default: gpt-4)
 ```
 
-`--stream` applies to every mode and to the step-by-step subcommands
-(`prepare` records it in the state file, so `step` uses it too). It changes only
-how the response travels, never the text you get back.
+`--stream` applies to every mode and to both step-by-step subcommands
+(`prepare` records it in the state file, so `step` and `finalize` use it too).
+It changes only how the response travels, never the text you get back.
+
+`--no-max-output-tokens` is recorded the same way and omitted on every call —
+the chunk calls and the final reduce alike. Passing it together with
+`--max-output-tokens` sends no `max_tokens` at all (the flag says "omit the
+field", and it means it).
 
 ## Examples
 

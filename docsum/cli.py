@@ -56,6 +56,14 @@ _STREAM_HELP = (
     "returned whole)"
 )
 
+# Same reason as _STREAM_HELP: `run` and `prepare` must not promise two different things
+# about a flag whose whole meaning is "every call omits max_tokens". This includes the
+# final reduce, which is why `finalize` reads the recorded flag too.
+_NO_MAX_OUTPUT_TOKENS_HELP = (
+    "omit max_tokens from every API call (use the model's default); takes precedence "
+    "over --max-output-tokens"
+)
+
 
 def _make_progress_bar(quiet: bool):
     """Create a progress callback. Returns a no-op if quiet is True.
@@ -180,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--no-max-output-tokens",
         action="store_true",
-        help="omit max_tokens from API call (use model default — may increase timeout risk)",
+        help=_NO_MAX_OUTPUT_TOKENS_HELP,
     )
     run_p.add_argument("--stream", action="store_true", help=_STREAM_HELP)
     run_p.add_argument(
@@ -253,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     prep_p.add_argument(
         "--no-max-output-tokens",
         action="store_true",
-        help="omit max_tokens from API call (use model default)",
+        help=_NO_MAX_OUTPUT_TOKENS_HELP,
     )
     prep_p.add_argument("--stream", action="store_true", help=_STREAM_HELP)
 
@@ -366,8 +374,13 @@ def _cmd_run(args) -> int:
     client = LLMClient(base_url=args.base_url, model=args.model, api_key=args.api_key)
     progress = _make_progress_bar(args.quiet)
 
-    # Determine max_tokens for API calls
-    run_max_tokens = None if args.no_max_output_tokens else args.max_output_tokens
+    # Determine max_tokens for API calls. None has a meaning all the way down:
+    # LLMClient.complete omits the field only when it receives None, so this local
+    # is passed through untouched — flattening None back to a number here is how
+    # --no-max-output-tokens was accepted and ignored before 2026-09-20.
+    run_max_tokens: int | None = (
+        None if args.no_max_output_tokens else args.max_output_tokens
+    )
     run_stream = args.stream
 
     if args.mode == "map-reduce":
@@ -379,7 +392,7 @@ def _cmd_run(args) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
-            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            max_output_tokens=run_max_tokens,
             stream=run_stream,
             progress=progress,
         )
@@ -391,7 +404,7 @@ def _cmd_run(args) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
-            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            max_output_tokens=run_max_tokens,
             stream=run_stream,
             progress=progress,
         )
@@ -404,7 +417,7 @@ def _cmd_run(args) -> int:
             max_tokens=args.max_tokens,
             overlap_tokens=args.overlap_tokens,
             model=args.tokenizer_model,
-            max_output_tokens=run_max_tokens if run_max_tokens is not None else 8192,
+            max_output_tokens=run_max_tokens,
             stream=run_stream,
             progress=progress,
         )
