@@ -24,6 +24,15 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 
+# git's TEMPORARY index — exported to the pre-commit hook by `git commit -- <path>` — must
+# reach no stage: any `git` command the gate runs in ANOTHER repository then reads this
+# repo's entries against that repository's object store and dies on the first blob it does
+# not have. Unset once, here: kit-ci and every stage it starts inherit this environment, and
+# docsum has no scripts/gate-env.sh to hold the long note (the other converted repos do).
+# Latent here, not live — every git call this gate makes reads its own repo. The fix is kit
+# f9c3300; its guarantee's home now is docs/KIT-FIXES.md, "Retired fixes" (2026-10-07).
+unset GIT_INDEX_FILE
+
 # A gate that cannot find its engine must fail loudly rather than read as green.
 if ! type -P kit-ci >/dev/null 2>&1; then
     printf 'gate: kit-ci is not installed. Build KitCI, then: cmake --install build --prefix ~/.local\n' >&2
