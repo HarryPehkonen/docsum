@@ -14,6 +14,37 @@ arbitrary checks get deleted. The rationale is the load-bearing part.
 
 ---
 
+## 2026-10-06 — the gate is no longer a 552-line copy of the kit's python gate (wiring record, not a breakage)
+
+What changed:      `scripts/gate.sh` stopped holding the checks. The gate is now
+                   `gate.toml` — the policy: six stages in two tiers — run by `kit-ci`, one
+                   C++ binary installed once per machine (`cmake --install build --prefix
+                   ~/.local`). The four scripts left in this repo are the ones the vocabulary
+                   cannot express in a single command: `py-tool.sh` (the `.venv` → PATH →
+                   `uv run --with` tool ladder), `format-changed.sh` (the branch's touched
+                   `.py` files), `clean-env.sh` (throwaway venv + `requirements.txt` + the
+                   suite from that interpreter + `python -m docsum --help`), `identity.sh`
+                   (`VERSION` == `docsum.__version__`). This entry is NOT an incident: it is
+                   here because the two edited files are the kit's hook copies and both say
+                   "if you edit this file, say why in INCIDENTS.md".
+Check added:       The same six checks under new names — `lint`, `format`, `tests`
+                   (`fail_on = "exit:5"`), `types`, `cleanenv` (full tier), `identity`. The
+                   teeth were re-measured on the converted gate rather than assumed:
+                   `VERSION` forced to 9.9.9 → `GATE FAILED — 3 passed, 2 failed (tests,
+                   identity)`; a new unformatted `probe_*.py` → `GATE FAILED — 4 passed,
+                   1 failed (format)`. Both runs captured in
+                   `gate-evidence/docsum/15-gate-converted-teeth.txt`.
+Why it must stay:  Two lines of `gate.toml` are load-bearing in ways a reader will not
+                   guess. (1) `[stage.format]` checks only the branch's touched files: 10 of
+                   this repo's 25 `.py` files are unformatted today (measured 2026-10-06), so
+                   the whole-tree form would make every commit red for debt nobody in that
+                   commit wrote. (2) `fail_on = "exit:5"` on `tests`: pytest exits 5 when it
+                   collects no tests, and without that line a suite of zero tests reads green —
+                   the same vacuous green the `cleanenv` stage exists to catch from the other
+                   side.
+
+---
+
 ## 2026-09-20 — `git status` held 398 untracked files, so a real stray file was invisible
 
 What broke:        Every `git status` in this repo listed four scratch entries carrying

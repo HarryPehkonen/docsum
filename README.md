@@ -135,6 +135,34 @@ PYTHONPATH=. .venv/bin/python -m docsum.cli \
   --mode refine --overlap-tokens 100
 ```
 
+## The gate
+
+The gate is `scripts/gate.sh` — one definition, three callers: by hand, git on commit and
+on push (`.githooks/`, armed once per clone with `git config core.hooksPath .githooks`), and
+a nightly clone. The *policy* is `gate.toml` (the stages, their tiers, their failure rules);
+that is the file to edit when the gate changes, and `kit-ci --list` / `--graph` read the
+same parse the run uses. The engine is `kit-ci`, one binary installed once per machine
+(`cmake --install build --prefix ~/.local`); `scripts/gate.sh` fails loudly if it is absent.
+
+```bash
+scripts/gate.sh                 # the full tier: all six stages
+scripts/gate.sh --tier fast     # everything except the throwaway-venv stage
+scripts/gate.sh --list          # the stages, and which tier each is in
+scripts/gate.sh --graph         # the same config as a Mermaid diagram
+```
+
+| Stage | What it checks |
+|---|---|
+| `lint` | `ruff check .` |
+| `format` | `ruff format --check` on the files this branch touches — 10 of the 25 `.py` files are pre-existing debt and are not this commit's problem |
+| `tests` | `pytest -q`, with exit 5 ("no tests collected") a failure |
+| `types` | `mypy .` |
+| `cleanenv` | throwaway venv + `requirements.txt` + the suite from that interpreter + `python -m docsum --help` (full tier only: building a venv is push-time work) |
+| `identity` | `VERSION` == `docsum.__version__` |
+
+The three python tools are found by `scripts/py-tool.sh`: `.venv/bin/<tool>` → `<tool>` on
+PATH → `uv run --with <tool>`, fetched on demand (this repo pins none of them).
+
 ## Testing
 
 ```bash

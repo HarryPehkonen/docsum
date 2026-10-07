@@ -22,10 +22,13 @@ if [ -x "$root/tools/ci.sh" ]; then
     exec "$root/tools/ci.sh" build tests
 fi
 
-# Deno / Python: the whole gate is already seconds. Run all of it here so a broken
-# commit never leaves your machine.
+# Deno / Python: the gate is seconds, so commit runs everything the FAST tier
+# holds — the whole policy except the stage that builds and populates a throwaway
+# venv, which is push-time work. The stage list lives in gate.toml; this hook only
+# names the tier (adapted for KitCI on 2026-10-06, card t_5ee2ee12 — see
+# INCIDENTS.md and .ai-dev-starter.json).
 if [ -x "$root/scripts/gate.sh" ]; then
-    exec "$root/scripts/gate.sh"
+    exec "$root/scripts/gate.sh" --tier fast
 fi
 
 # No gate found is a failure, not a warning: a silently unarmed gate is worse than

@@ -26,8 +26,11 @@ if [ -x "$root/tools/ci.sh" ]; then
         tree format kitprobes build tests version asan tsan tidy pristine
 fi
 
+# Deno / Python: the same script the human runs and the nightly clean checkout
+# runs; this hook names the tier (the stage list lives in gate.toml). Adapted for
+# KitCI on 2026-10-06, card t_5ee2ee12 — see INCIDENTS.md.
 if [ -x "$root/scripts/gate.sh" ]; then
-    exec "$root/scripts/gate.sh"
+    exec "$root/scripts/gate.sh" --tier full
 fi
 
 printf 'pre-push: no gate found. Expected %s/tools/ci.sh (C++) or %s/scripts/gate.sh (deno/python).\n' \

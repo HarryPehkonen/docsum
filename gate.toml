@@ -1,0 +1,49 @@
+# docsum's gate. The policy is this file; the engine is kit-ci, installed once per
+# machine (build KitCI, then: cmake --install build --prefix ~/.local).
+#
+# One definition, three callers - by hand (scripts/gate.sh), git on commit and on push
+# (.githooks/, which names the tier), and a nightly clean checkout (the same
+# scripts/gate.sh in a fresh clone). Changing the gate means editing this file:
+# `kit-ci --list` and `kit-ci --graph` read the same parse the run uses.
+#
+# A stage is a shell string. Three of them need more than one command, so they call a
+# script next to this file; the rest are one line each.
+
+[gate]
+repo = "docsum"
+
+[tier.fast]
+stages = ["lint", "format", "tests", "types", "identity"]
+
+[tier.full]
+stages = ["*"]
+
+[stage.lint]
+cmd = "scripts/py-tool.sh ruff check ."
+
+# Not the whole tree: 10 of this repo's 25 .py files are unformatted (measured
+# 2026-10-06), and checking pre-existing debt every run buries the file you just
+# edited in noise nobody wrote. Same touched-file list the kit's python gate used.
+[stage.format]
+cmd = "scripts/format-changed.sh"
+
+[stage.tests]
+cmd = "scripts/py-tool.sh pytest -q -p no:cacheprovider"
+# pytest's exit 5 is "no tests collected": a green suite of zero tests is the most
+# expensive failure mode there is, so it fails here (kit-ci adds nonzero on top).
+fail_on = "exit:5"
+
+[stage.types]
+cmd = "scripts/py-tool.sh mypy ."
+
+# The clean-machine question: a throwaway venv, requirements.txt installed into it,
+# the suite run from that interpreter, and the CLI asked for --help. Creating and
+# populating a venv is push-time work, so this stage is the one the fast tier leaves
+# out (the kit's python gate drew the same line). The timeout is the default 300s
+# raised, because a cold package cache is the slow case and it is not a failure.
+[stage.cleanenv]
+cmd = "scripts/clean-env.sh"
+timeout = 600
+
+[stage.identity]
+cmd = "scripts/identity.sh"
